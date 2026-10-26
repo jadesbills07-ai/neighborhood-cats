@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neighborhood Cats — Lisbon Falls</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="style.css">
+<meta name="theme-color" content="#0f2a22">
+</head>
+<body>
+<header>
+  <h1>🐾 Neighborhood Cats</h1>
+  <p>Lisbon Falls area — one shared map, so everyone sees the same cats.</p>
+  <p class="counts" id="counts">Loading…</p>
+</header>
+
+<section id="join" class="card">
+  <h2>Join this neighborhood</h2>
+  <p>Enter the neighborhood code a neighbor gave you, and a display name. No phone number or email is shown to anyone.</p>
+  <label>Display name <input id="displayName" placeholder="e.g. Jade"></label>
+  <label>Neighborhood code <input id="joinCode" placeholder="Neighborhood code"></label>
+  <button id="joinBtn">Join the map</button>
+  <p id="joinError" class="error" role="alert"></p>
+  <p class="small">Default code for a local test run: <strong>lisbon-cats</strong> — change it with the NEIGHBORHOOD_CODE setting when you deploy (see README).</p>
+</section>
+
+<main id="app" hidden>
+  <div id="alertBanner" class="alert" hidden></div>
+
+  <div class="tabs" role="tablist">
+    <button data-filter="all" class="active">All cats</button>
+    <button data-filter="outdoor">✅ Outdoor OK</button>
+    <button data-filter="indoor">🏠 Indoor Only</button>
+    <button data-filter="spotted">⚠️ Spotted Outside</button>
+  </div>
+  <input id="search" type="search" placeholder="Search cats, owners, or home areas…">
+
+  <div id="map"></div>
+  <p id="mapFallback" class="small" hidden>If the map does not load, the cat list below still works.</p>
+  <p class="small">Tap the map to place your cat's approximate pin when adding a cat. Pins are approximate by design.</p>
+
+  <h2>Cats</h2>
+  <div id="catList"></div>
+
+  <h2>Recent sightings</h2>
+  <div id="sightingFeed"></div>
+
+  <h2>Add your cat</h2>
+  <form id="addCat" class="card">
+    <p class="warning">⚠️ Home area: street or nearest corner ONLY. Do <strong>not</strong> enter your house number.</p>
+    <label>Cat name * <input name="name" required placeholder="e.g. Whiskers"></label>
+    <label>Your display name * <input name="owner" required></label>
+    <label>Description <input name="description" placeholder="Friendly, shy, chatty…"></label>
+    <label>Collar / ID <input name="collar" placeholder="e.g. Red collar, bell"></label>
+    <label>Home area <input name="homeArea" placeholder="e.g. Near Main St & School St"></label>
+    <fieldset>
+      <legend>Status *</legend>
+      <label><input type="radio" name="status" value="outdoor" checked> ✅ Outdoor OK — roams on purpose. Neighbors can relax if they see them out.</label><br>
+      <label><input type="radio" name="status" value="indoor"> 🏠 Indoor Only — should never be out. If spotted, neighbors alert you right away.</label>
+    </fieldset>
+    <fieldset>
+      <legend>Pick a photo</legend>
+      <div id="photoChoices"></div>
+      <p class="small">No file upload here on purpose — uploads failed on some Android phones in the earlier version. You can also add an optional photo link below.</p>
+      <label>Optional photo URL <input name="photoUrl" placeholder="https://… (optional)"></label>
+    </fieldset>
+    <p>📍 Pin: <span id="pinStatus">No spot picked yet — your pin will land near the center of the map. To place it, tap anywhere on the map above.</span></p>
+    <button type="submit">Add my cat to the shared map</button>
+    <p id="addError" class="error" role="alert"></p>
+  </form>
+
+  <button id="clearExamples" class="quiet">Clear example cats (keeps cats neighbors added)</button>
+  <p class="small">Display names only. Never post a phone number, email, or house number here.</p>
+</main>
+
+<div id="modal" hidden>
+  <div class="modal-box">
+    <button id="closeModal" aria-label="Close">✕</button>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

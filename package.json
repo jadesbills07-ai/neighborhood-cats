@@ -1,0 +1,1 @@
+{"dependencies":{"express":"^4.19.2"},"description":"A shared neighborhood cat map for Lisbon Falls, Maine: one server, one shared list of cats, so every neighbor sees the same cats and messages.","engines":{"node":">=18"},"main":"server.js","name":"neighborhood-cats-shared","scripts":{"start":"node server.js"},"version":"1.0.0"}
