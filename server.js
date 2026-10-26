@@ -78,9 +78,16 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const DB_PATH = path.join(__dirname, 'data', 'db.json');
 
-app.use(express.json({ limit: '2mb' }));
+const MAX_PHOTOS_PER_CAT = 5;
+const MAX_PHOTO_CHARS = 1500000;
+// Multiple photos per cat: JSON limit raised from 2mb to 8mb so 5
+// browser-resized photos (each capped at ~1.5M chars, typically far
+// smaller after 800px JPEG resizing) can fit in one request. Photos
+// are still data URLs in data/db.json — fine for a small trial, not
+// a long-term media store; more photos per cat grows the DB faster.
+app.use(express.json({ limit: '8mb' }));
 app.use((err, req, res, next) => {
-  if (err && err.type === 'entity.too.large') return res.status(413).json({ error: 'That upload is too large — please use a smaller photo.' });
+  if (err && err.type === 'entity.too.large') return res.status(413).json({ error: 'Those photos together are too large — please use fewer or smaller photos.' });
   return next(err);
 });
 app.use(express.static(path.join(__dirname, 'public')));
@@ -214,16 +221,25 @@ function publicUser(user) {
 // in are shown. In normal mode only the opted-in exact address (if the
 // owner ticked "Always show my exact address") is shown — contact, vet,
 // medical and notes stay hidden until emergency mode is ON.
+function catPhotos(cat) {
+  // Backwards compatibility: legacy cats have only photoData (one
+  // photo); new cats have photos[]. Either way, return an array whose
+  // first entry is the main/profile photo.
+  if (Array.isArray(cat.photos) && cat.photos.length) return cat.photos.filter((p) => typeof p === 'string' && p.startsWith('data:image/'));
+  if (cat.photoData && typeof cat.photoData === 'string' && cat.photoData.startsWith('data:image/')) return [cat.photoData];
+  return [];
+}
 function publicCat(cat) {
   const c = withLocationDefaults(cat);
   const em = c.emergency || {};
+  const photos = catPhotos(c);
   const filled = {};
   if (c.emergencyOn) {
     for (const k of ['address', 'contact', 'vet', 'medical', 'notes']) {
       if (String(em[k] || '').trim()) filled[k] = String(em[k]).trim();
     }
   }
-  const out = { ...c };
+  const out = { ...c, photos, photoData: photos[0] || '' };
   delete out.pinHash;
   delete out.ownerId;
   delete out.emergency;
@@ -421,7 +437,7 @@ app.get('/api/alerts', requireScope, (req, res) => {
 });
 
 app.post('/api/cats', requireAuth, (req, res) => {
-  const { name, description, collar, homeArea, owner, status, photo, photoUrl, photoData, lat, lng, county, town, zip,
+  const { name, description, collar, homeArea, owner, status, photo, photoUrl, photoData, photos, photoDataList, lat, lng, county, town, zip,
     emergencyAddress, emergencyContact, emergencyVet, emergencyMedical, emergencyNotes, showAddressAlways, ownerPin } = req.body || {};
   if (!name || !name.trim()) return res.status(400).json({ error: 'Cat name is required.' });
   if (!['outdoor', 'indoor'].includes(status)) return res.status(400).json({ error: 'Status must be outdoor or indoor.' });
@@ -443,22 +459,29 @@ app.post('/api/cats', requireAuth, (req, res) => {
   }
   const pin = String(ownerPin || '').trim();
   if (pin && !/^\d{4,6}$/.test(pin)) return res.status(400).json({ error: 'Owner PIN must be 4–6 digits, or left blank.' });
-  let cleanPhotoData = '';
-  if (photoData) {
-    if (typeof photoData !== 'string' || !photoData.startsWith('data:image/')) {
+  // Multiple photos: accept `photos` or `photoDataList` (array), with
+  // the legacy single `photoData` as fallback. Cap: 5 photos per cat.
+  const incomingPhotos = Array.isArray(photos) ? photos : (Array.isArray(photoDataList) ? photoDataList : (photoData ? [photoData] : []));
+  if (incomingPhotos.length > MAX_PHOTOS_PER_CAT) {
+    return res.status(400).json({ error: 'You can add up to 5 photos per cat.' });
+  }
+  const cleanPhotos = [];
+  for (const p of incomingPhotos) {
+    if (typeof p !== 'string' || !p.startsWith('data:image/')) {
       return res.status(400).json({ error: 'Uploaded photo must be an image.' });
     }
-    if (photoData.length > 1500000) {
+    if (p.length > MAX_PHOTO_CHARS) {
       return res.status(400).json({ error: 'Uploaded photo is too large — please use a smaller photo (it is resized in the browser to at most 800px).' });
     }
-    cleanPhotoData = photoData;
+    cleanPhotos.push(p);
   }
+  const cleanPhotoData = cleanPhotos[0] || '';
   const cat = {
     id: nextId(), ownerId: req.user.id, name: name.trim(), description: (description || '').trim(),
     collar: (collar || '').trim(), homeArea: (homeArea || '').trim(),
     county: catCounty, town: catTown, zip: catZip,
     owner: ownerName, status, photo: photo || '🐈', photoUrl: (photoUrl || '').trim(),
-    photoData: cleanPhotoData,
+    photoData: cleanPhotoData, photos: cleanPhotos,
     lat: Number(lat) || 44.003, lng: Number(lng) || -70.06,
     spotted: false, isExample: false, createdAt: new Date().toISOString(),
     emergencyOn: false,

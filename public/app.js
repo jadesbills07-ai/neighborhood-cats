@@ -21,7 +21,8 @@ function isMaineZip(v) { const z = String(v || '').trim(); return /^\d{5}$/.test
 // town edge is not rejected for a GPS mismatch.
 function inMaine(lat, lng) { return lat >= 43.0 && lat <= 47.5 && lng >= -71.2 && lng <= -66.9; }
 let map = null, markers = [], pendingPin = null, chosenPhoto = '🐈';
-let uploadedPhotoData = null;
+const MAX_PHOTOS_PER_CAT = 5;
+let uploadedPhotos = [];
 // Google account state. Guests can browse a town read-only; adding
 // cats, messaging, sightings, and Emergency Mode require sign-in.
 let signedIn = false, googleConfigured = false, accountUser = null, myCats = [];
@@ -160,12 +161,27 @@ window.enableNotifications = async function () {
   } catch (e) { $('alertSettingsNote').textContent = 'Could not ask for notification permission on this browser.'; }
 };
 
-// Photo precedence: uploaded photo > photo URL > emoji fallback.
+// Photo precedence: uploaded photos (first = main) > photo URL > emoji fallback.
+// Legacy cats have only photoData (one photo); that is treated as a 1-photo gallery.
+function catPhotos(cat) {
+  if (Array.isArray(cat.photos) && cat.photos.length) return cat.photos.filter((p) => typeof p === 'string' && p.startsWith('data:image/'));
+  if (cat.photoData && String(cat.photoData).startsWith('data:image/')) return [cat.photoData];
+  return [];
+}
 function photoHtml(cat, size) {
   const s = size || 56;
-  if (cat.photoData && String(cat.photoData).startsWith('data:image/')) return `<img src="${escapeHtml(cat.photoData)}" alt="" style="width:${s}px;height:${s}px;object-fit:cover;border-radius:8px">`;
+  const photos = catPhotos(cat);
+  if (photos.length) return `<img src="${escapeHtml(photos[0])}" alt="" style="width:${s}px;height:${s}px;object-fit:cover;border-radius:8px">`;
   if (cat.photoUrl) return `<img src="${escapeHtml(cat.photoUrl)}" alt="" style="width:${s}px;height:${s}px;object-fit:cover;border-radius:8px" onerror="this.remove()">`;
   return escapeHtml(cat.photo || '🐈');
+}
+function photoGalleryHtml(cat) {
+  const photos = catPhotos(cat);
+  if (!photos.length) return '';
+  // Main image swaps when a thumbnail is tapped (this.src is the same
+  // data URL, so no extra function or URL passing is needed).
+  const thumbs = photos.map((p, i) => `<img src="${escapeHtml(p)}" alt="Photo ${i + 1} of ${photos.length}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;cursor:pointer;border:2px solid #e8d9bd" onclick="document.getElementById('catGalleryMainImg').src=this.src">`).join('');
+  return `<div><img id="catGalleryMainImg" src="${escapeHtml(photos[0])}" alt="" style="width:100%;max-width:420px;max-height:420px;object-fit:cover;border-radius:12px"><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">${thumbs}</div><p class="small">${photos.length} photo${photos.length === 1 ? '' : 's'} — tap a thumbnail to view it larger. First photo is the main photo.</p></div>`;
 }
 function resizeImageFile(file) {
   return new Promise((resolve, reject) => {
@@ -414,8 +430,9 @@ function emergencyCardHtml(cat) {
 window.openCat = function (id) {
   const cat = cats.find((c) => c.id === id); if (!cat) return;
   const sightHtml = (cat.sightings || []).map((s) => `<p><strong>${escapeHtml(s.location)}</strong>${s.lat != null ? ` — 📍 exact GPS pin ${Number(s.lat).toFixed(5)}, ${Number(s.lng).toFixed(5)}` : ''}<br>${escapeHtml(s.note || '')}<br><span class="small">Reported by ${escapeHtml(s.reporter)} · ${new Date(s.createdAt).toLocaleString()}</span></p>`).join('') || '<p>No sightings yet.</p>';
+  const gallery = photoGalleryHtml(cat);
   $('modalBody').innerHTML = `
-    <div class="photo">${photoHtml(cat, 120)}</div>
+    ${gallery || `<div class="photo">${photoHtml(cat, 120)}</div>`}
     <h2>${escapeHtml(cat.name)} ${cat.isExample ? '<span class="small">(example)</span>' : ''}</h2>
     <p><span class="badge ${cat.emergencyOn ? 'spotted' : (cat.spotted ? 'spotted' : cat.status)}">${statusLabel(cat)}</span></p>
     <p>${escapeHtml(cat.description || '')}</p>
@@ -543,26 +560,47 @@ document.querySelectorAll('.photo-btn').forEach((b) => b.onclick = () => {
   document.querySelectorAll('.photo-btn').forEach((x) => x.classList.remove('selected'));
   b.classList.add('selected'); chosenPhoto = b.dataset.photo;
 });
+function renderPhotoPreview() {
+  const gallery = $('photoPreviewGallery');
+  if (!gallery) return;
+  gallery.innerHTML = uploadedPhotos.map((p, i) => `<span style="display:inline-block;text-align:center"><img src="${escapeHtml(p)}" alt="Photo ${i + 1}" style="width:96px;height:96px;object-fit:cover;border-radius:8px"><br><button type="button" onclick="removeUploadedPhoto(${i})">Remove</button></span>`).join('');
+  $('photoPreview').hidden = !uploadedPhotos.length;
+}
+window.removeUploadedPhoto = function (i) {
+  uploadedPhotos.splice(i, 1);
+  $('photoUpload').value = '';
+  renderPhotoPreview();
+};
 function clearUploadedPhoto() {
-  uploadedPhotoData = null;
+  uploadedPhotos = [];
   $('photoUpload').value = '';
   $('photoPreview').hidden = true;
-  $('photoPreviewImg').src = '';
   $('photoUploadError').textContent = '';
+  renderPhotoPreview();
 }
 $('photoUpload').onchange = async (e) => {
-  const file = e.target.files && e.target.files[0];
-  if (!file) return;
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+  if (uploadedPhotos.length + files.length > MAX_PHOTOS_PER_CAT) {
+    $('photoUploadError').textContent = `You can add up to 5 photos per cat — you already have ${uploadedPhotos.length}, so these were not added. Remove one first if you want to add a different photo.`;
+    $('photoUpload').value = '';
+    return;
+  }
   try {
-    if (!file.type.startsWith('image/')) throw new Error('Please choose an image file.');
-    uploadedPhotoData = await resizeImageFile(file);
-    if (uploadedPhotoData.length > 1500000) throw new Error('That photo is still too large after resizing — please try a smaller photo.');
-    $('photoPreviewImg').src = uploadedPhotoData;
-    $('photoPreview').hidden = false;
+    const resized = [];
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) throw new Error('Please choose image files only.');
+      const data = await resizeImageFile(file);
+      if (data.length > 1500000) throw new Error('That photo is still too large after resizing — please try a smaller photo.');
+      resized.push(data);
+    }
+    uploadedPhotos.push(...resized);
+    renderPhotoPreview();
     $('photoUploadError').textContent = '';
+    $('photoUpload').value = '';
   } catch (err) {
-    clearUploadedPhoto();
     $('photoUploadError').textContent = err.message;
+    $('photoUpload').value = '';
   }
 };
 $('photoRemove').onclick = clearUploadedPhoto;
@@ -577,7 +615,7 @@ $('addCat').onsubmit = async (e) => {
       name: f.get('name'), owner: displayName || f.get('owner'), description: f.get('description'),
       collar: f.get('collar'), homeArea: f.get('homeArea'), status: f.get('status'),
       county: f.get('county') || selectedCounty, town: f.get('town') || selectedTown, zip: zip,
-      photo: chosenPhoto, photoUrl: f.get('photoUrl'), photoData: uploadedPhotoData,
+      photo: chosenPhoto, photoUrl: f.get('photoUrl'), photoData: uploadedPhotos[0] || null, photos: uploadedPhotos, photoDataList: uploadedPhotos,
       lat: pendingPin?.lat, lng: pendingPin?.lng,
       emergencyAddress: f.get('emergencyAddress'), emergencyContact: f.get('emergencyContact'),
       emergencyVet: f.get('emergencyVet'), emergencyMedical: f.get('emergencyMedical'),

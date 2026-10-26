@@ -4,13 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Where in the Whiskers? — Maine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chewy&family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="style.css">
 <meta name="theme-color" content="#145c3f">
 </head>
 <body>
 <header>
-  <h1>🐾 Where in the Whiskers<span class="whiskers">?</span></h1>
+  <div class="header-detective" aria-hidden="true"><svg viewBox="0 0 200 200" width="110" height="110" role="presentation"><g stroke="#0f2a22" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M45 78 L38 28 L82 52 Z" fill="#fffdf6"/><path d="M155 78 L162 28 L118 52 Z" fill="#fffdf6"/><path d="M55 75 L50 42 L72 58 Z" fill="#ffb59e"/><path d="M145 75 L150 42 L128 58 Z" fill="#ffb59e"/><ellipse cx="100" cy="110" rx="62" ry="54" fill="#fffdf6"/><path d="M60 108 L28 100 M60 118 L30 122 M140 108 L172 100 M140 118 L170 122" stroke="#ffd9a0" stroke-width="3"/><circle cx="76" cy="102" r="7" fill="#145c3f" stroke="none"/><path d="M92 122 L108 122 L100 130 Z" fill="#e07a2e" stroke="none"/><path d="M100 130 Q100 138 92 142 M100 130 Q100 138 108 142" fill="none"/></g><g><circle cx="128" cy="102" r="26" fill="#ffd9a0" fill-opacity="0.35" stroke="#e07a2e" stroke-width="7"/><circle cx="128" cy="102" r="7" fill="#145c3f"/><path d="M147 121 L172 146" stroke="#145c3f" stroke-width="8" stroke-linecap="round"/><path d="M160 158 Q175 150 178 138" fill="none" stroke="#fffdf6" stroke-width="5" stroke-linecap="round"/></g></svg></div>
+  <h1 aria-label="Where in the Whiskers?">🐾 Where in the Wh<span class="cat-i"><span class="cat-i-stem">ı</span><span class="cat-i-paw" aria-hidden="true">🐾</span></span>skers<span class="whiskers">?</span></h1>
   <p class="tagline">Maine — one app, locked to your own town. You only see cats for your ZIP / county / town.</p>
   <p class="paw-row" aria-hidden="true">🐾 🐾 🐾</p>
   <div class="whisker-divider" aria-hidden="true"></div>
@@ -138,9 +142,9 @@
     <fieldset>
       <legend>Pick a photo</legend>
       <div id="photoChoices"></div>
-      <p class="small">Or upload a real photo — it will be resized in your browser to at most 800px on the long side before it is sent, so it stays small. If you don't upload one, the emoji above is used instead.</p>
-      <label>Upload a photo <input id="photoUpload" type="file" accept="image/*"></label>
-      <div id="photoPreview" hidden><img id="photoPreviewImg" alt="Uploaded photo preview" style="width:120px;height:120px;object-fit:cover;border-radius:8px"><br><button type="button" id="photoRemove">Remove uploaded photo</button></div>
+      <p class="small">Or upload real photos — up to 5 per cat. Each will be resized in your browser to at most 800px on the long side before it is sent, so it stays small. The first photo is the main photo shown in the cat list; all photos show in the cat's detail gallery. If you don't upload any, the emoji above is used instead.</p>
+      <label>Upload photos (up to 5) <input id="photoUpload" type="file" accept="image/*" multiple></label>
+      <div id="photoPreview" hidden><div id="photoPreviewGallery" style="display:flex;gap:8px;flex-wrap:wrap"></div><br><button type="button" id="photoRemove">Remove all photos</button></div>
       <p id="photoUploadError" class="error"></p>
       <label>Optional photo URL <input name="photoUrl" placeholder="https://… (optional)"></label>
     </fieldset>

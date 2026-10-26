@@ -128,12 +128,19 @@ your location again.
   ZIP, owner display name, Outdoor OK vs Indoor Only
 - Tabs + search within your town for Outdoor OK, Indoor Only, and Spotted
   cats, with counts (counts and the sightings feed follow your town only)
-- “Add your cat”: tap the map for an approximate pin, upload a real photo
-  (Chrome on Android: choose an image, it is resized in the browser to at
-  most 800px on the long side as a JPEG before it is sent, previewed, and
-  stored with the cat — server limit 2mb per request, photos over ~1.5mb
-  of data are rejected with a clear error), or pick a built-in emoji photo
-  as a fallback, plus an optional photo URL
+- “Add your cat”: tap the map for an approximate pin, upload up to 5 real
+  photos per cat (choose multiple images, each is resized in the browser
+  to at most 800px on the long side as a JPEG before it is sent, shown as
+  a preview gallery with a Remove button per photo, and stored with the
+  cat — first photo is the main photo in the cat list, all photos show
+  as a gallery in the cat detail, tap a thumbnail to view it larger;
+  server limit 8mb per request, each photo over ~1.5mb of data and any
+  6th photo are rejected with a clear error "You can add up to 5 photos
+  per cat"; legacy cats with a single photo still display, with that
+  photo as the first gallery image), or pick a built-in emoji photo
+  as a fallback, plus an optional photo URL. Photos are data URLs in
+  data/db.json, so multiple photos per cat grow the database faster —
+  fine for a small trial, not a long-term media store.
 - “I spotted this cat” for Indoor Only cats: creates an alert banner, a
   sightings-feed entry, and a message in that cat's thread
 - Sighting GPS ping: when reporting a sighting, “Use my current location”
