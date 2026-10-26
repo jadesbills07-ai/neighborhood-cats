@@ -69,6 +69,68 @@ async function enterWithAccount(user) {
   refreshTimer = setInterval(() => { if (!$('app').hidden) refresh().catch(() => {}); }, 30000);
 }
 let spotGps = null; // this sighting's GPS pin only — never a home location
+let spotPhoto = null; // single browser-resized sighting photo (data URL), or null
+function sightingPhotoHtml(s) {
+  const p = s && typeof s.photoData === 'string' && s.photoData.startsWith('data:image/') ? s.photoData : '';
+  return p ? `<img src="${escapeHtml(p)}" alt="Photo of the spotted cat" style="width:100%;max-width:320px;max-height:320px;object-fit:cover;border-radius:12px;margin:8px 0">` : '';
+}
+window.removeSpotPhoto = function () {
+  spotPhoto = null;
+  const inp = $('spotPhotoInput'); if (inp) inp.value = '';
+  const prev = $('spotPhotoPreview'); if (prev) { prev.innerHTML = ''; prev.hidden = true; }
+  const err = $('spotPhotoError'); if (err) err.textContent = '';
+};
+// Viewer location for DISTANCES only. In-memory only: never stored in
+// sessionStorage/localStorage, never sent to the server, never used as
+// a home location, and never tracked continuously. It is set only when
+// the user already grants GPS through an existing flow (join/setup
+// "Confirm my location", "Place pin at my current location", or the
+// map's auto-centre), or taps "Show distances from my location" in
+// Local Alerts. If GPS is denied/unavailable, viewerLocation stays
+// null and NO distance is shown anywhere — no fake numbers, and no
+// town-centre default distance.
+let viewerLocation = null;
+function setViewerLocation(lat, lng) {
+  const la = Number(lat), lo = Number(lng);
+  if (Number.isFinite(la) && Number.isFinite(lo)) viewerLocation = { lat: la, lng: lo };
+}
+// Haversine straight-line distance, in miles. This is NOT road
+// distance — it is the straight line between two points on the earth.
+function haversineMiles(lat1, lng1, lat2, lng2) {
+  const a1 = Number(lat1), o1 = Number(lng1), a2 = Number(lat2), o2 = Number(lng2);
+  if (![a1, o1, a2, o2].every(Number.isFinite)) return null;
+  const R = 3958.8; // earth radius in miles
+  const dLat = (a2 - a1) * Math.PI / 180, dLng = (o2 - o1) * Math.PI / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a1 * Math.PI / 180) * Math.cos(a2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function formatDistance(mi) {
+  if (mi == null || !Number.isFinite(mi)) return '';
+  return mi < 0.1 ? '<0.1 mi' : `${mi.toFixed(1)} mi`;
+}
+// Returns '' when the viewer GPS is unknown or the target has no pin,
+// so distances are never invented. exact=true is for sighting pins
+// (exact); otherwise it is a home pin (approximate by design).
+function distanceText(lat, lng, exact) {
+  if (!viewerLocation || lat == null || lng == null) return '';
+  const mi = haversineMiles(viewerLocation.lat, viewerLocation.lng, lat, lng);
+  if (mi == null) return '';
+  return exact ? ` · ${formatDistance(mi)} away (exact sighting distance)` : ` · ${formatDistance(mi)} away (approx. home pin)`;
+}
+const DISTANCE_NOTE = 'Distances are straight-line, from your current location, and home-pin distances are approximate because home pins are approximate by design.';
+function requestViewerLocation() {
+  const note = $('distanceStatus');
+  if (!navigator.geolocation) { if (note) note.textContent = 'GPS is not available on this device — distances cannot be shown.'; return; }
+  if (note) note.textContent = 'Getting your location…';
+  navigator.geolocation.getCurrentPosition((pos) => {
+    setViewerLocation(pos.coords.latitude, pos.coords.longitude);
+    if (note) note.textContent = '✓ Location set for distances only — it is not stored or used as a home location.';
+    render();
+  }, () => {
+    if (note) note.textContent = 'GPS was denied or unavailable — distances will not be shown.';
+  }, { enableHighAccuracy: true, timeout: 10000 });
+}
+window.requestViewerLocation = requestViewerLocation;
 let currentAlert = null; // {catId, catName, sightingId, location, lat, lng}
 let refreshTimer = null;
 
@@ -96,10 +158,19 @@ function playAlertSound() {
   } catch (e) { return false; }
 }
 function fireLoudAlert(cat, alert) {
-  currentAlert = { catId: cat.id, catName: cat.name, sightingId: alert.sightingId, location: alert.location, lat: alert.lat, lng: alert.lng, createdAt: alert.createdAt };
+  currentAlert = { catId: cat.id, catName: cat.name, sightingId: alert.sightingId, location: alert.location, lat: alert.lat, lng: alert.lng, createdAt: alert.createdAt, photoData: alert.photoData || '' };
   const banner = $('loudAlert');
   if (banner) {
     $('loudAlertText').textContent = `🚨 URGENT: ${cat.name} (Indoor Only) was spotted outside near ${alert.location} — ${new Date(alert.createdAt).toLocaleString()}${alert.lat != null ? ` — GPS pin ${Number(alert.lat).toFixed(5)}, ${Number(alert.lng).toFixed(5)}` : ''}`;
+    // Sighting photo in the loud banner, where one was uploaded — built
+    // as a DOM node (not innerHTML) so the data URL is not injected.
+    const oldPhoto = document.getElementById('loudAlertPhoto'); if (oldPhoto) oldPhoto.remove();
+    if (typeof alert.photoData === 'string' && alert.photoData.startsWith('data:image/')) {
+      const img = document.createElement('img');
+      img.id = 'loudAlertPhoto'; img.src = alert.photoData; img.alt = 'Photo of the spotted cat';
+      img.style.cssText = 'width:100%;max-width:320px;max-height:320px;object-fit:cover;border-radius:12px;margin:8px 0';
+      $('loudAlertText').after(img);
+    }
     $('loudAlertNote').textContent = loudEnabled() ? 'This banner stays until you dismiss it.' : 'Loud alerts are OFF, so there is no sound, vibration, or browser notification for this alert. Turn them on to hear future alerts.';
     banner.hidden = false;
   }
@@ -218,6 +289,29 @@ function statusLabel(cat) {
   if (cat.spotted) return '⚠️ Spotted Outside';
   return cat.status === 'outdoor' ? '✅ Outdoor OK' : '🏠 Indoor Only';
 }
+// Treats: never assume OK. Legacy cats without a value default to "ask".
+function treatsValue(cat) { return ['ok', 'no', 'ask'].includes(cat?.treats) ? cat.treats : 'ask'; }
+function treatsLabel(cat) {
+  return treatsValue(cat) === 'ok' ? '🍪 Treats OK' : treatsValue(cat) === 'no' ? '🚫 No treats please' : '❓ Ask owner first';
+}
+function treatsHtml(cat) {
+  const v = treatsValue(cat);
+  const cls = v === 'no' ? 'treats treats-no' : 'treats';
+  const indoorNote = cat.status === 'indoor' ? ' <span class="small">(Indoor Only cats should not be outside to be fed at all — please contact the owner if you find one.)</span>' : '';
+  return `<p class="${cls}">Treats: ${treatsLabel(cat)}${indoorNote}</p>`;
+}
+// TSR (Trap-Spay-Release, also called Trap-Neuter-Return): a community
+// cat that has already been spayed/neutered and released. Neighbours
+// should NOT trap it again. Legacy cats default to non-TSR.
+function isTsr(cat) { return !!cat?.tsr; }
+function tsrHtml(cat) {
+  if (!isTsr(cat)) return '';
+  const ear = cat.earTip
+    ? 'TSR — Trap-Spay-Release, ear-tipped community cat, please do not trap again.'
+    : 'TSR — Trap-Spay-Release community cat, already spayed/neutered and released, please do not trap again.';
+  const colony = cat.colony ? ` <span class="small">Colony / caretaker: ${escapeHtml(cat.colony)}</span>` : '';
+  return `<p class="tsr-badge">🐾 ${ear}${colony}</p>`;
+}
 
 async function api(path, opts = {}) {
   const res = await fetch(path, { ...opts, headers: { ...headers(), ...(opts.headers || {}) } });
@@ -241,6 +335,7 @@ function placeHomePinFromGps() {
   if (status) status.textContent = 'Getting your location…';
   navigator.geolocation.getCurrentPosition((pos) => {
     pendingPin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    setViewerLocation(pos.coords.latitude, pos.coords.longitude);
     if (map) map.setView([pendingPin.lat, pendingPin.lng], 16);
     if (status) status.textContent = `GPS pin placed near ${pendingPin.lat.toFixed(5)}, ${pendingPin.lng.toFixed(5)}. ${HOME_GPS_NOTE}`;
   }, () => {
@@ -260,10 +355,12 @@ function initMap() {
   // why the pin stays tap-to-move afterwards. If GPS is denied or
   // unavailable, no pin is auto-set: the user must tap the map (or
   // use the button later), and the no-pin warning stays visible.
-  map = L.map('map').setView([44.003, -70.06], 14);
+  map = L.map('map', { zoomControl: false }).setView([44.003, -70.06], 14);
+  L.control.zoom({ position: 'topright' }).addTo(map);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(map);
   if (navigator.geolocation && !pendingPin) {
     navigator.geolocation.getCurrentPosition((pos) => {
+      setViewerLocation(pos.coords.latitude, pos.coords.longitude);
       if (map && inMaine(pos.coords.latitude, pos.coords.longitude)) {
         map.setView([pos.coords.latitude, pos.coords.longitude], 14);
         pendingPin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
@@ -309,8 +406,9 @@ function visibleCats() {
     if (filter === 'outdoor' && cat.status !== 'outdoor') return false;
     if (filter === 'indoor' && cat.status !== 'indoor') return false;
     if (filter === 'spotted' && !cat.spotted) return false;
+    if (filter === 'tsr' && !isTsr(cat)) return false;
     if (search) {
-      const hay = `${cat.name} ${cat.owner} ${cat.homeArea} ${cat.description}`.toLowerCase();
+      const hay = `${cat.name} ${cat.owner} ${cat.homeArea} ${cat.description} ${cat.colony || ''} ${isTsr(cat) ? 'tsr trap spay release neuter return community' : ''}`.toLowerCase();
       if (!hay.includes(search)) return false;
     }
     return true;
@@ -325,7 +423,35 @@ function render() {
   const outdoor = cats.filter((c) => c.status === 'outdoor').length;
   const indoor = cats.filter((c) => c.status === 'indoor').length;
   const spotted = cats.filter((c) => c.spotted).length;
-  $('counts').textContent = `${cats.length} cats in your town · ${outdoor} Outdoor OK · ${indoor} Indoor Only · ${spotted} Spotted Outside`;
+  const tsrCount = cats.filter((c) => isTsr(c)).length;
+  $('counts').textContent = `${cats.length} cats in your town · ${outdoor} Outdoor OK · ${indoor} Indoor Only · ${spotted} Spotted Outside · ${tsrCount} TSR`;
+  // Mockup summary cards — REAL data only, nothing invented:
+  // Lost = cats in Lost/Emergency Mode, sightings = server sightings.
+  // Distance is shown ONLY when the viewer GPS is known (see
+  // viewerLocation); no weather/hazard feed exists, so none is shown.
+  const lostEl = $('lostCardSub');
+  if (lostEl) {
+    const emergencyCats0 = cats.filter((c) => c.emergencyOn);
+    let nearestLost = '';
+    if (viewerLocation && emergencyCats0.length) {
+      const nearest = emergencyCats0
+        .map((c) => ({ cat: c, mi: haversineMiles(viewerLocation.lat, viewerLocation.lng, c.lat, c.lng) }))
+        .filter((d) => d.mi != null)
+        .sort((a, b) => a.mi - b.mi)[0];
+      if (nearest) nearestLost = ` · Nearest lost cat ${formatDistance(nearest.mi)} away (${nearest.cat.name}, approx. home pin)`;
+    }
+    lostEl.textContent = emergencyCats0.length
+      ? `${emergencyCats0.length} lost / emergency cat${emergencyCats0.length === 1 ? '' : 's'} in your town: ${emergencyCats0.map((c) => c.name).join(', ')} · ${sightings.length} sighting report${sightings.length === 1 ? '' : 's'} in your town${nearestLost}`
+      : `No cats in Lost / Emergency Mode in your town yet · ${sightings.length} sighting report${sightings.length === 1 ? '' : 's'} in your town`;
+  }
+  const safetyEl = $('safetyCardSub');
+  if (safetyEl) {
+    safetyEl.textContent = spotted
+      ? `${spotted} indoor-only cat${spotted === 1 ? '' : 's'} spotted outside in your town — tap an alert below for details. This app has no weather / hazard feed, so Safety Alerts here means sightings of cats that should be indoors.`
+      : `No indoor-only cats spotted outside in your town yet. This app has no weather / hazard feed, so Safety Alerts here means sightings of cats that should be indoors.`;
+  }
+  const liveEl = $('mapLiveLabel');
+  if (liveEl) liveEl.textContent = (selectedTown ? `Map • ${selectedTown} • Live` : 'Map • Live');
   const emergencyCats = cats.filter((c) => c.emergencyOn);
   $('emergencyBanner').hidden = !emergencyCats.length;
   if (emergencyCats.length) $('emergencyBanner').textContent = `🚨 LOST / EMERGENCY: ${emergencyCats.map((c) => c.name).join(', ')} — tap a cat to see the emergency details the owner chose to share.`;
@@ -337,26 +463,30 @@ function render() {
       <div class="photo">${photoHtml(cat, 56)}</div>
       ${cat.emergencyOn ? '<p><strong>🚨 LOST / EMERGENCY — details below are shown because the owner marked this cat lost.</strong></p>' : ''}
       <h3>${escapeHtml(cat.name)} ${cat.isExample ? '<span class="small">(example)</span>' : ''}</h3>
-      <p><span class="badge ${cat.emergencyOn ? 'spotted' : (cat.spotted ? 'spotted' : cat.status)}">${statusLabel(cat)}</span> · ${escapeHtml(catCounty(cat))} / ${escapeHtml(catTown(cat))} · ${escapeHtml(cat.homeArea || '')}</p>
+      <p><span class="badge ${cat.emergencyOn ? 'spotted' : (cat.spotted ? 'spotted' : cat.status)}">${statusLabel(cat)}</span> · ${escapeHtml(catCounty(cat))} / ${escapeHtml(catTown(cat))} · ${escapeHtml(cat.homeArea || '')}${distanceText(cat.lat, cat.lng, false)}</p>
+      ${tsrHtml(cat)}
+      ${treatsHtml(cat)}
       <p>${escapeHtml(cat.description || '')}</p>
       <p class="small">Collar/ID: ${escapeHtml(cat.collar || '—')} · Owner: ${escapeHtml(cat.owner)}</p>
       <button onclick="openCat('${cat.id}')">View &amp; message</button>
       ${cat.status === 'indoor' ? `<button onclick="openSpotted('${cat.id}')">I spotted this cat</button>` : ''}
     </article>`).join('') || '<p>No cats match this filter yet.</p>';
   $('sightingFeed').innerHTML = sightings.slice(0, 20).map((s) => `
-    <div class="cat"><strong>${escapeHtml(s.catName)}</strong> — ${escapeHtml(s.location)}${s.lat != null ? `<br><span class="small">📍 Exact GPS pin: ${Number(s.lat).toFixed(5)}, ${Number(s.lng).toFixed(5)} (where the spotter was standing)</span>` : ''}<br>${escapeHtml(s.note || '')}<br><span class="small">Reported by ${escapeHtml(s.reporter)} · ${new Date(s.createdAt).toLocaleString()}</span></div>`).join('') || '<p>No sightings yet.</p>';
+    <div class="cat"><strong>${escapeHtml(s.catName)}</strong> — ${escapeHtml(s.location)}${s.lat != null ? `<br><span class="small">📍 Exact GPS pin: ${Number(s.lat).toFixed(5)}, ${Number(s.lng).toFixed(5)} (where the spotter was standing)${distanceText(s.lat, s.lng, true)}</span>` : ''}<br>${sightingPhotoHtml(s)}${escapeHtml(s.note || '')}<br><span class="small">Reported by ${escapeHtml(s.reporter)} · ${new Date(s.createdAt).toLocaleString()}</span></div>`).join('') || '<p>No sightings yet.</p>';
   renderAlerts();
   renderProfile();
+  renderTsrTab();
   renderMap();
 }
 
-// ---- 3 main tabs: 1 Local Alerts, 2 Map, 3 My Profile ----
+// ---- 4 main tabs: 1 Local Alerts, 2 Map, 3 My Profile, 4 TSR Cats ----
 // Tab order lives in index.html (buttons + panels in the same order).
 // switchMainTab is the only place that knows the tab names, so the
 // order can be swapped later by moving the HTML blocks together.
+// TSR is appended last, so the original three tabs keep their order.
 let currentMainTab = 'alerts';
 function switchMainTab(name) {
-  if (!['alerts', 'map', 'profile'].includes(name)) return;
+  if (!['alerts', 'map', 'profile', 'tsr'].includes(name)) return;
   currentMainTab = name;
   document.querySelectorAll('.main-tab-btn').forEach((b) => {
     const active = b.dataset.mainTab === name;
@@ -365,6 +495,7 @@ function switchMainTab(name) {
   });
   document.querySelectorAll('.tab-panel').forEach((p) => { p.hidden = p.dataset.panel !== name; });
   if (name === 'profile') syncProfileForm();
+  if (name === 'tsr') renderTsrTab();
   if (name === 'map' && map) {
     // Leaflet was initialised while the map panel was hidden; it needs
     // a resize once it becomes visible, or tiles render blank.
@@ -404,7 +535,21 @@ function renderAlerts() {
   if (!el) return;
   const entries = [];
   // Lost / Emergency cats first — they are the most urgent alerts.
-  for (const cat of cats.filter((c) => c.emergencyOn)) {
+  // When the viewer GPS is known, nearest lost cats come first
+  // (straight-line, home-pin distance); otherwise the server order
+  // (effectively newest first) is kept, as before.
+  const emergencyCatsList = cats.filter((c) => c.emergencyOn);
+  if (viewerLocation) {
+    emergencyCatsList.sort((a, b) => {
+      const da = haversineMiles(viewerLocation.lat, viewerLocation.lng, a.lat, a.lng);
+      const db = haversineMiles(viewerLocation.lat, viewerLocation.lng, b.lat, b.lng);
+      if (da == null && db == null) return 0;
+      if (da == null) return 1;
+      if (db == null) return -1;
+      return da - db;
+    });
+  }
+  for (const cat of emergencyCatsList) {
     entries.push({ kind: 'emergency', cat, createdAt: cat.createdAt, location: cat.homeArea || '', lat: cat.lat, lng: cat.lng, text: '🚨 LOST / Emergency — the owner marked this cat lost. Tap to see the emergency details the owner chose to share.' });
   }
   // Then every sighting, newest first. Sighting data comes from the
@@ -422,13 +567,44 @@ function renderAlerts() {
   el.innerHTML = entries.map((e) => {
     const cat = e.cat;
     const name = cat ? escapeHtml(cat.name) : escapeHtml(e.sighting?.catName || 'A cat');
-    const gps = (e.lat != null && e.lng != null) ? `<br><span class="small">📍 Exact GPS pin: ${Number(e.lat).toFixed(5)}, ${Number(e.lng).toFixed(5)}${e.kind === 'loud' || e.kind === 'sighting' ? ' (where the spotter was standing)' : ''}</span>` : '';
+    const gps = (e.lat != null && e.lng != null) ? `<br><span class="small">📍 ${e.kind === 'emergency' ? 'Approx. home pin' : 'Exact GPS pin'}: ${Number(e.lat).toFixed(5)}, ${Number(e.lng).toFixed(5)}${e.kind === 'loud' || e.kind === 'sighting' ? ' (where the spotter was standing)' : ''}${distanceText(e.lat, e.lng, e.kind !== 'emergency')}</span>` : '';
     const when = e.createdAt ? `<br><span class="small">${new Date(e.createdAt).toLocaleString()}${e.sighting ? ` · Reported by ${escapeHtml(e.sighting.reporter)}` : ''}</span>` : '';
     const viewBtn = cat ? `<button onclick="viewAlertOnMap('${cat.id}', ${e.lat != null ? Number(e.lat) : 'null'}, ${e.lng != null ? Number(e.lng) : 'null'})">View on map</button> <button onclick="openCat('${cat.id}')">View cat</button>` : '';
     const heading = e.kind === 'emergency' ? `🚨 LOST / EMERGENCY: ${name}` : (e.kind === 'loud' ? `🚨 Spotted outside (loud alert): ${name}` : `📍 Sighting: ${name}`);
-    return `<article class="cat ${e.kind === 'emergency' ? 'cat-emergency' : ''}"><h3>${heading}</h3><p>${escapeHtml(e.location)}${gps}${when}</p>${e.text ? `<p>${escapeHtml(e.text)}</p>` : ''}<p>${viewBtn}</p></article>`;
+    return `<article class="cat ${e.kind === 'emergency' ? 'cat-emergency' : ''}"><h3>${heading}</h3><p>${escapeHtml(e.location)}${gps}${when}</p>${e.sighting ? sightingPhotoHtml(e.sighting) : ''}${e.text ? `<p>${escapeHtml(e.text)}</p>` : ''}<p>${viewBtn}</p></article>`;
   }).join('');
 }
+// 4th main tab: TSR Cats — only TSR cats in this town (server
+// already scopes to the town). Same badge, ear-tip, colony,
+// treats, and distance info as the cat list; the Map filter tab
+// ("TSR Cats" on the Map panel) shows the same set on the map.
+function renderTsrTab() {
+  const el = $('tsrCatList');
+  if (!el) return;
+  const list = cats.filter((c) => isTsr(c));
+  el.innerHTML = list.map((cat) => `
+    <article class="cat ${cat.emergencyOn ? 'cat-emergency' : ''}">
+      <div class="photo">${photoHtml(cat, 56)}</div>
+      <h3>${escapeHtml(cat.name)} ${cat.isExample ? '<span class="small">(example)</span>' : ''}</h3>
+      <p><span class="badge ${cat.emergencyOn ? 'spotted' : (cat.spotted ? 'spotted' : cat.status)}">${statusLabel(cat)}</span> · ${escapeHtml(catCounty(cat))} / ${escapeHtml(catTown(cat))} · ${escapeHtml(cat.homeArea || '')}${distanceText(cat.lat, cat.lng, false)}</p>
+      ${tsrHtml(cat)}
+      ${treatsHtml(cat)}
+      <p>${escapeHtml(cat.description || '')}</p>
+      <p class="small">Collar/ID: ${escapeHtml(cat.collar || '—')} · Owner: ${escapeHtml(cat.owner)}</p>
+      <button onclick="openCat('${cat.id}')">View &amp; message</button>
+      ${cat.status === 'indoor' ? `<button onclick="openSpotted('${cat.id}')">I spotted this cat</button>` : ''}
+    </article>`).join('') || '<p class="paw-note">🐾 No TSR cats in your town yet. Add one with the “Add a TSR cat” button above — tick “This is a TSR cat” in the Add Your Cat form.</p>';
+}
+window.showTsrOnMap = function () {
+  // Jump to the Map panel with the TSR filter active, so the same
+  // TSR cats show on the map. Map invalidateSize() still runs via
+  // switchMainTab('map'), exactly as for the other tabs.
+  document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('active', x.dataset.filter === 'tsr'));
+  filter = 'tsr';
+  switchMainTab('map');
+  render();
+};
+
 function renderProfile() {
   const scopeEl = $('profileScope');
   if (scopeEl) scopeEl.textContent = (selectedCounty && selectedTown) ? `Display name: ${displayName || '—'} · ZIP: ${zip} · ${selectedCounty} / ${selectedTown}` : 'Join a town first to see your profile.';
@@ -451,7 +627,9 @@ function renderProfile() {
     <article class="cat ${cat.emergencyOn ? 'cat-emergency' : ''}">
       <div class="photo">${photoHtml(cat, 56)}</div>
       <h3>${escapeHtml(cat.name)}</h3>
-      <p><span class="badge ${cat.emergencyOn ? 'spotted' : (cat.spotted ? 'spotted' : cat.status)}">${statusLabel(cat)}</span> · ${escapeHtml(cat.homeArea || '')}</p>
+      <p><span class="badge ${cat.emergencyOn ? 'spotted' : (cat.spotted ? 'spotted' : cat.status)}">${statusLabel(cat)}</span> · ${escapeHtml(cat.homeArea || '')}${distanceText(cat.lat, cat.lng, false)}</p>
+      ${tsrHtml(cat)}
+      ${treatsHtml(cat)}
       <p><button onclick="openCat('${cat.id}')">View &amp; message</button> <button onclick="toggleEmergency('${cat.id}', ${cat.emergencyOn ? 'false' : 'true'})">${cat.emergencyOn ? 'Emergency OFF — cat found / safe' : 'Mark as Lost / Emergency'}</button></p>
       <p class="small">${cat.hasPin ? 'Owner PIN required to toggle Emergency Mode.' : 'No owner PIN was set for this cat — anyone in town could toggle emergency mode. Add a PIN when you add a cat, if you can.'}</p>
     </article>`).join('');
@@ -476,15 +654,18 @@ function emergencyCardHtml(cat) {
 
 window.openCat = function (id) {
   const cat = cats.find((c) => c.id === id); if (!cat) return;
-  const sightHtml = (cat.sightings || []).map((s) => `<p><strong>${escapeHtml(s.location)}</strong>${s.lat != null ? ` — 📍 exact GPS pin ${Number(s.lat).toFixed(5)}, ${Number(s.lng).toFixed(5)}` : ''}<br>${escapeHtml(s.note || '')}<br><span class="small">Reported by ${escapeHtml(s.reporter)} · ${new Date(s.createdAt).toLocaleString()}</span></p>`).join('') || '<p>No sightings yet.</p>';
+  const sightHtml = (cat.sightings || []).map((s) => `<p><strong>${escapeHtml(s.location)}</strong>${s.lat != null ? ` — 📍 exact GPS pin ${Number(s.lat).toFixed(5)}, ${Number(s.lng).toFixed(5)}${distanceText(s.lat, s.lng, true)}` : ''}<br>${sightingPhotoHtml(s)}${escapeHtml(s.note || '')}<br><span class="small">Reported by ${escapeHtml(s.reporter)} · ${new Date(s.createdAt).toLocaleString()}</span></p>`).join('') || '<p>No sightings yet.</p>';
   const gallery = photoGalleryHtml(cat);
   $('modalBody').innerHTML = `
     ${gallery || `<div class="photo">${photoHtml(cat, 120)}</div>`}
     <h2>${escapeHtml(cat.name)} ${cat.isExample ? '<span class="small">(example)</span>' : ''}</h2>
     <p><span class="badge ${cat.emergencyOn ? 'spotted' : (cat.spotted ? 'spotted' : cat.status)}">${statusLabel(cat)}</span></p>
+    ${tsrHtml(cat)}
     <p>${escapeHtml(cat.description || '')}</p>
+    ${treatsHtml(cat)}
     <p>County / town: ${escapeHtml(catCounty(cat))} / ${escapeHtml(catTown(cat))}</p>
-    <p>Home area: ${escapeHtml(cat.homeArea || '')} (approximate — never a house number)</p>
+    <p>Home area: ${escapeHtml(cat.homeArea || '')} (approximate — never a house number)${distanceText(cat.lat, cat.lng, false)}</p>
+    ${viewerLocation ? `<p class="small">${DISTANCE_NOTE}</p>` : ''}
     <p>Collar / ID: ${escapeHtml(cat.collar || '—')}</p>
     <p>Owner: ${escapeHtml(cat.owner)}</p>
     ${emergencyCardHtml(cat)}
@@ -522,7 +703,7 @@ window.toggleEmergency = async function (id, turnOn) {
 
 window.openSpotted = function (id) {
   const cat = cats.find((c) => c.id === id); if (!cat) return;
-  spotGps = null;
+  spotGps = null; spotPhoto = null;
   $('modalBody').innerHTML = `
     <h2>Spotted ${escapeHtml(cat.name)} outside?</h2>
     <p>${escapeHtml(cat.name)} is marked Indoor Only. Your sighting will alert the owner, appear in the sightings feed, and show on the map as Spotted Outside. <strong>It also triggers a loud urgent alert for everyone viewing this town</strong> — a flashing banner, alert sound (if loud alerts are on), vibration on Android, and a browser notification if the owner allowed notifications.</p>
@@ -530,8 +711,29 @@ window.openSpotted = function (id) {
     <p><button type="button" onclick="useSpotGps()">📍 Use my current location</button></p>
     <p id="spotGpsStatus" class="small">GPS pin is optional. If you use it, the exact spot where you are standing right now is saved with this sighting and shown as a pin. Home pins stay approximate — exact pins are only for sightings.</p>
     <label>Note <input id="spotNote" placeholder="e.g. Heading toward the park, seemed scared"></label>
+    <label>Take a photo / upload a photo of the cat you spotted <input id="spotPhotoInput" type="file" accept="image/*" capture="environment"></label>
+    <p class="small">On a phone this opens the camera first (rear camera); you can also pick a photo from your gallery instead. On a computer it opens the file picker. The photo is resized in your browser to at most 800px before it is sent.</p>
+    <p class="small">A photo helps the owner recognise their cat. Only upload a photo of the cat, not of people, houses, or licence plates, if you can avoid it.</p>
+    <div id="spotPhotoPreview" hidden></div>
+    <p id="spotPhotoError" class="error"></p>
     <button onclick="sendSighting('${cat.id}')">Send sighting alert</button>
     <p id="modalError" class="error"></p>`;
+  const inp = $('spotPhotoInput');
+  if (inp) inp.onchange = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+      spotPhoto = await resizeImageFile(file);
+      const prev = $('spotPhotoPreview');
+      prev.innerHTML = `<img src="${escapeHtml(spotPhoto)}" alt="Sighting photo preview" style="width:100%;max-width:320px;max-height:320px;object-fit:cover;border-radius:12px"><br><button type="button" onclick="removeSpotPhoto()">Remove photo</button>`;
+      prev.hidden = false;
+      $('spotPhotoError').textContent = '';
+    } catch (err) {
+      spotPhoto = null;
+      $('spotPhotoError').textContent = err.message;
+    }
+    inp.value = '';
+  };
   $('modal').hidden = false;
 };
 
@@ -541,6 +743,7 @@ window.useSpotGps = function () {
   status.textContent = 'Getting your location…';
   navigator.geolocation.getCurrentPosition((pos) => {
     spotGps = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    setViewerLocation(pos.coords.latitude, pos.coords.longitude);
     const loc = $('spotLocation');
     if (loc && !loc.value.trim()) loc.value = `GPS pin ${spotGps.lat.toFixed(5)}, ${spotGps.lng.toFixed(5)}`;
     status.textContent = `✓ GPS pin set: ${spotGps.lat.toFixed(5)}, ${spotGps.lng.toFixed(5)} — this exact spot will be saved with the sighting.`;
@@ -558,10 +761,10 @@ window.sendMessage = async function (id) {
 window.sendSighting = async function (id) {
   if (!signedIn) { $('modalError').textContent = 'Please sign in with Google to report a sighting. Guests can browse only.'; return; }
   try {
-    const s = await api(`/api/cats/${id}/sightings`, { method: 'POST', body: JSON.stringify({ location: $('spotLocation').value, note: $('spotNote').value, lat: spotGps?.lat, lng: spotGps?.lng }) });
+    const s = await api(`/api/cats/${id}/sightings`, { method: 'POST', body: JSON.stringify({ location: $('spotLocation').value, note: $('spotNote').value, lat: spotGps?.lat, lng: spotGps?.lng, photoData: spotPhoto || null }) });
     // Don't loud-alert the spotter for their own report on the next refresh.
     if (s && s.id) markAlertSeen(s.id);
-    spotGps = null;
+    spotGps = null; spotPhoto = null;
     await refresh(); openCat(id);
   } catch (e) { $('modalError').textContent = e.message; }
 };
@@ -661,7 +864,8 @@ $('addCat').onsubmit = async (e) => {
   try {
     await api('/api/cats', { method: 'POST', body: JSON.stringify({
       name: f.get('name'), owner: displayName || f.get('owner'), description: f.get('description'),
-      collar: f.get('collar'), homeArea: f.get('homeArea'), status: f.get('status'),
+      collar: f.get('collar'), homeArea: f.get('homeArea'), status: f.get('status'), treats: f.get('treats') || 'ask',
+      tsr: f.get('tsr') === 'on', earTip: f.get('earTip') === 'on', colony: f.get('colony') || '',
       county: f.get('county') || selectedCounty, town: f.get('town') || selectedTown, zip: zip,
       photo: chosenPhoto, photoUrl: f.get('photoUrl'), photoData: uploadedPhotos[0] || null, photos: uploadedPhotos, photoDataList: uploadedPhotos,
       lat: pendingPin?.lat, lng: pendingPin?.lng,
@@ -707,6 +911,8 @@ $('joinGpsBtn').onclick = () => {
   status.textContent = 'Getting your location…';
   navigator.geolocation.getCurrentPosition((pos) => {
     // Coordinates are checked in memory only and never stored.
+    // They are also reused, in memory only, for distance display.
+    setViewerLocation(pos.coords.latitude, pos.coords.longitude);
     if (inMaine(pos.coords.latitude, pos.coords.longitude)) {
       gpsConfirmed = true;
       status.textContent = '✓ GPS confirmed — your device is in Maine. GPS is a confirmation flag only; it does not prove your exact ZIP boundary, and your coordinates are not stored.';
@@ -765,6 +971,7 @@ if ($('setupGpsBtn')) $('setupGpsBtn').onclick = () => {
   if (!navigator.geolocation) { status.textContent = 'GPS is not available on this device. You can still continue with your ZIP only, marked unverified.'; setupGpsConfirmed = false; return; }
   status.textContent = 'Getting your location…';
   navigator.geolocation.getCurrentPosition((pos) => {
+    setViewerLocation(pos.coords.latitude, pos.coords.longitude);
     if (inMaine(pos.coords.latitude, pos.coords.longitude)) { setupGpsConfirmed = true; status.textContent = '✓ GPS confirmed — your device is in Maine. GPS is a confirmation flag only; your coordinates are not stored.'; }
     else { setupGpsConfirmed = false; status.textContent = 'GPS shows a location outside Maine. You can still continue with your Maine ZIP, marked unverified — please double-check your ZIP.'; }
   }, () => { setupGpsConfirmed = false; status.textContent = 'GPS was denied or unavailable. You can still continue with your ZIP only, marked unverified.'; }, { enableHighAccuracy: true, timeout: 10000 });

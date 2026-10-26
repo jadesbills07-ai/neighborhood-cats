@@ -229,8 +229,16 @@ function catPhotos(cat) {
   if (cat.photoData && typeof cat.photoData === 'string' && cat.photoData.startsWith('data:image/')) return [cat.photoData];
   return [];
 }
+const TREATS_VALUES = ['ok', 'no', 'ask'];
+const normalizeTreats = (v) => TREATS_VALUES.includes(String(v || '').trim()) ? String(v).trim() : 'ask';
 function publicCat(cat) {
   const c = withLocationDefaults(cat);
+  c.treats = normalizeTreats(c.treats);
+  // TSR: legacy cats without these fields default to non-TSR, no ear
+  // tip, no colony — never assume a cat is a community cat.
+  c.tsr = !!c.tsr;
+  c.earTip = !!c.earTip;
+  c.colony = String(c.colony || c.colonyCaretaker || '').trim().slice(0, 80);
   const em = c.emergency || {};
   const photos = catPhotos(c);
   const filled = {};
@@ -437,10 +445,12 @@ app.get('/api/alerts', requireScope, (req, res) => {
 });
 
 app.post('/api/cats', requireAuth, (req, res) => {
-  const { name, description, collar, homeArea, owner, status, photo, photoUrl, photoData, photos, photoDataList, lat, lng, county, town, zip,
+  const { name, description, collar, homeArea, owner, status, treats, tsr, earTip, colony, colonyCaretaker, photo, photoUrl, photoData, photos, photoDataList, lat, lng, county, town, zip,
     emergencyAddress, emergencyContact, emergencyVet, emergencyMedical, emergencyNotes, showAddressAlways, ownerPin } = req.body || {};
   if (!name || !name.trim()) return res.status(400).json({ error: 'Cat name is required.' });
   if (!['outdoor', 'indoor'].includes(status)) return res.status(400).json({ error: 'Status must be outdoor or indoor.' });
+  if (treats !== undefined && treats !== null && String(treats).trim() !== '' && !TREATS_VALUES.includes(String(treats).trim())) return res.status(400).json({ error: 'Treats must be OK, no treats, or ask owner first.' });
+  const catTreats = normalizeTreats(treats);
   // The signed-in account owns the cat: display name comes from the
   // account, so one user cannot post as another. Guests cannot add.
   const ownerName = (req.user.displayName || '').trim() || (owner || '').trim();
@@ -480,7 +490,12 @@ app.post('/api/cats', requireAuth, (req, res) => {
     id: nextId(), ownerId: req.user.id, name: name.trim(), description: (description || '').trim(),
     collar: (collar || '').trim(), homeArea: (homeArea || '').trim(),
     county: catCounty, town: catTown, zip: catZip,
-    owner: ownerName, status, photo: photo || '🐈', photoUrl: (photoUrl || '').trim(),
+    owner: ownerName, status, treats: catTreats,
+    // TSR (Trap-Spay-Release / Trap-Neuter-Return): community cat,
+    // already spayed/neutered and released. Colony is a display name
+    // only — never an address or contact detail.
+    tsr: !!tsr, earTip: !!earTip, colony: String(colony || colonyCaretaker || '').trim().slice(0, 80),
+    photo: photo || '🐈', photoUrl: (photoUrl || '').trim(),
     photoData: cleanPhotoData, photos: cleanPhotos,
     lat: Number(lat) || 44.003, lng: Number(lng) || -70.06,
     spotted: false, isExample: false, createdAt: new Date().toISOString(),
@@ -502,7 +517,20 @@ app.post('/api/cats', requireAuth, (req, res) => {
 app.post('/api/cats/:id/sightings', requireAuth, (req, res) => {
   const cat = db.cats.find((c) => c.id === req.params.id);
   if (!cat) return res.status(404).json({ error: 'Cat not found.' });
-  const { location, note, lat, lng } = req.body || {};
+  const { location, note, lat, lng, photoData } = req.body || {};
+  // Sighting photo (single, browser-resized, like cat photos): optional,
+  // must be a data:image/ URL ≤ ~1,500,000 chars. Bad values are 400,
+  // never silently stored.
+  let sightingPhoto = '';
+  if (photoData) {
+    if (typeof photoData !== 'string' || !photoData.startsWith('data:image/')) {
+      return res.status(400).json({ error: 'Sighting photo must be an image.' });
+    }
+    if (photoData.length > MAX_PHOTO_CHARS) {
+      return res.status(400).json({ error: 'Sighting photo is too large — please use a smaller photo (it is resized in the browser to at most 800px).' });
+    }
+    sightingPhoto = photoData;
+  }
   const reporter = req.user.displayName || 'Neighbor';
   let sightLat = null, sightLng = null;
   if (lat !== undefined && lat !== null && lat !== '') {
@@ -516,14 +544,14 @@ app.post('/api/cats/:id/sightings', requireAuth, (req, res) => {
   const loc = (location && location.trim()) || (sightLat !== null ? `GPS pin ${sightLat.toFixed(5)}, ${sightLng.toFixed(5)}` : '');
   if (!loc) return res.status(400).json({ error: 'Sighting location is required — type a location or use your current location.' });
   const isIndoorAlert = cat.status === 'indoor';
-  const sighting = { id: nextId(), location: loc, note: (note || '').trim(), reporter: (reporter || 'Neighbor').trim(), createdAt: new Date().toISOString(), lat: sightLat, lng: sightLng, gps: sightLat !== null, alert: isIndoorAlert };
+  const sighting = { id: nextId(), location: loc, note: (note || '').trim(), reporter: (reporter || 'Neighbor').trim(), createdAt: new Date().toISOString(), lat: sightLat, lng: sightLng, gps: sightLat !== null, alert: isIndoorAlert, photoData: sightingPhoto };
   cat.sightings.unshift(sighting);
   // A sighting of an indoor-only cat marks it Spotted Outside, posts
   // the same alert into its message thread, AND sets the urgent-alert
   // flag the frontend polls for (loud alert, not just a quiet message).
   if (isIndoorAlert) {
     cat.spotted = true;
-    cat.lastSightingAlert = { sightingId: sighting.id, location: sighting.location, lat: sightLat, lng: sightLng, createdAt: sighting.createdAt };
+    cat.lastSightingAlert = { sightingId: sighting.id, location: sighting.location, lat: sightLat, lng: sightLng, createdAt: sighting.createdAt, photoData: sightingPhoto };
     cat.messages.unshift({ id: nextId(), author: 'Spotted alert', text: `Spotted outside near ${sighting.location}. ${sighting.note}`.trim(), createdAt: sighting.createdAt });
   }
   saveDb(db);

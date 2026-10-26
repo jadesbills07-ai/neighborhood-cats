@@ -15,8 +15,7 @@
 </head>
 <body>
 <header>
-  <div class="header-detective" aria-hidden="true"><svg viewBox="0 0 200 200" width="110" height="110" role="presentation"><g stroke="#0f2a22" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M45 78 L38 28 L82 52 Z" fill="#fffdf6"/><path d="M155 78 L162 28 L118 52 Z" fill="#fffdf6"/><path d="M55 75 L50 42 L72 58 Z" fill="#ffb59e"/><path d="M145 75 L150 42 L128 58 Z" fill="#ffb59e"/><ellipse cx="100" cy="110" rx="62" ry="54" fill="#fffdf6"/><path d="M60 108 L28 100 M60 118 L30 122 M140 108 L172 100 M140 118 L170 122" stroke="#ffd9a0" stroke-width="3"/><circle cx="76" cy="102" r="7" fill="#145c3f" stroke="none"/><path d="M92 122 L108 122 L100 130 Z" fill="#e07a2e" stroke="none"/><path d="M100 130 Q100 138 92 142 M100 130 Q100 138 108 142" fill="none"/></g><g><circle cx="128" cy="102" r="26" fill="#ffd9a0" fill-opacity="0.35" stroke="#e07a2e" stroke-width="7"/><circle cx="128" cy="102" r="7" fill="#145c3f"/><path d="M147 121 L172 146" stroke="#145c3f" stroke-width="8" stroke-linecap="round"/><path d="M160 158 Q175 150 178 138" fill="none" stroke="#fffdf6" stroke-width="5" stroke-linecap="round"/></g></svg></div>
-  <h1 aria-label="Where in the Whiskers?"><svg class="paw-logo" viewBox="0 0 100 118" role="img" aria-label="Paw Map Pin logo"><g stroke="#0f2a22" stroke-width="3" stroke-linejoin="round"><path d="M30 30 L24 8 L48 20 Z" fill="#fffdf6"/><path d="M70 30 L76 8 L52 20 Z" fill="#fffdf6"/><path d="M34 26 L31 15 L42 21 Z" fill="#e07a2e" stroke="none"/><path d="M66 26 L69 15 L58 21 Z" fill="#e07a2e" stroke="none"/></g><path d="M50 18 C30 18 16 33 16 50 C16 70 32 92 50 112 C68 92 84 70 84 50 C84 33 70 18 50 18 Z" fill="#145c3f" stroke="#0f2a22" stroke-width="3"/><circle cx="50" cy="50" r="24" fill="#fffdf6"/><g fill="#e07a2e"><ellipse cx="50" cy="58" rx="9" ry="7"/><circle cx="36" cy="46" r="4.5"/><circle cx="46" cy="40" r="4.5"/><circle cx="54" cy="40" r="4.5"/><circle cx="64" cy="46" r="4.5"/></g></svg> Where in the Wh<span class="cat-i"><span class="cat-i-stem">ı</span><span class="cat-i-paw" aria-hidden="true">🐾</span></span>skers<span class="whiskers">?</span></h1>
+  <div class="header-top"><svg class="paw-logo" viewBox="0 0 100 118" role="img" aria-label="Paw Map Pin logo"><g stroke="#ffffff" stroke-width="4" stroke-linejoin="round"><path d="M30 30 L24 8 L48 20 Z" fill="#159aa5"/><path d="M70 30 L76 8 L52 20 Z" fill="#159aa5"/><path d="M34 26 L31 15 L42 21 Z" fill="#8fd8de" stroke="none"/><path d="M66 26 L69 15 L58 21 Z" fill="#8fd8de" stroke="none"/></g><path d="M50 18 C30 18 16 33 16 50 C16 70 32 92 50 112 C68 92 84 70 84 50 C84 33 70 18 50 18 Z" fill="#159aa5" stroke="#ffffff" stroke-width="5"/><g fill="#8fd8de"><ellipse cx="50" cy="58" rx="9" ry="7"/><circle cx="36" cy="46" r="4.5"/><circle cx="46" cy="40" r="4.5"/><circle cx="54" cy="40" r="4.5"/><circle cx="64" cy="46" r="4.5"/></g></svg><h1 aria-label="Where in the Whiskers?"><span class="header-line">Where in the</span> <span class="header-word">Wh<span class="cat-i"><span class="cat-i-stem">ı</span><span class="cat-i-paw" aria-hidden="true">🐾</span></span>skers<span class="whiskers">?</span></span></h1></div>
   <p class="tagline">Maine — one app, locked to your own town. You only see cats for your ZIP / county / town.</p>
   <p class="paw-row" aria-hidden="true">🐾 🐾 🐾</p>
   <div class="whisker-divider" aria-hidden="true"></div>
@@ -78,25 +77,37 @@
   <div id="alertBanner" class="alert" hidden></div>
   <p><button type="button" id="changeScopeBtn">Change town (re-enter ZIP + GPS)</button></p>
 
-  <!-- 3 main tabs, in order: 1 Local Alerts, 2 Map, 3 My Profile.
+  <!-- 4 main tabs, in order: 1 Local Alerts, 2 Map, 3 My Profile,
+       4 TSR Cats (appended last, so the original order is unchanged).
        Tab order is fixed here; the active tab is switched in app.js
        (switchMainTab), so the order can be changed later by moving
        these buttons and panels together, without changing the code. -->
   <nav class="main-tabs" role="tablist" aria-label="Main sections">
-    <button type="button" class="main-tab-btn active" data-main-tab="alerts" aria-selected="true">🚨 Local Alerts</button>
-    <button type="button" class="main-tab-btn" data-main-tab="map" aria-selected="false">🗺️ Map</button>
-    <button type="button" class="main-tab-btn" data-main-tab="profile" aria-selected="false">🐱 My Profile</button>
+    <button type="button" class="main-tab-btn active" data-main-tab="alerts" aria-selected="true">Local<br>Alerts</button>
+    <button type="button" class="main-tab-btn" data-main-tab="map" aria-selected="false">Map</button>
+    <button type="button" class="main-tab-btn" data-main-tab="profile" aria-selected="false">My Profile</button>
+    <button type="button" class="main-tab-btn" data-main-tab="tsr" aria-selected="false">TSR<br>Cats</button>
   </nav>
 
   <section id="tab-alerts" class="tab-panel" data-panel="alerts">
     <h2 class="cute-h">🚨 Local Alerts — your town only</h2>
     <p class="paw-note">🐾 Newest first, with Lost / Emergency cats at the very top. This feed is only for the town you joined — you cannot browse other towns' alerts. Tap “View on map” to jump to that cat and its GPS sighting pin.</p>
+    <p><button type="button" onclick="requestViewerLocation()">📍 Show distances from my location</button></p>
+    <p id="distanceStatus" class="small">Distances are straight-line, from your current location, and home-pin distances are approximate because home pins are approximate by design. Distances only appear after you allow location (here, or via “Confirm my location” / “Place pin at my current location”) — they are not stored, not tracked continuously, and not shown if GPS is denied.</p>
     <p class="card" style="margin:16px">
       <label><input type="checkbox" id="loudToggle" checked> 🔊 Loud alerts for my cats</label>
       <button type="button" onclick="testAlertSound()">🔊 Test alert sound</button>
       <button type="button" onclick="enableNotifications()">🔔 Enable browser notifications</button>
       <span id="alertSettingsNote" class="small">When an Indoor Only cat is spotted in your town, you get a flashing banner that stays until dismissed, plus (if loud alerts are on) an alert sound, phone vibration on Android, and a browser notification if you allowed notifications. Honest limit: a web app cannot override silent / Do Not Disturb, and cannot reliably wake a fully closed browser without a native app and push service.</span>
     </p>
+    <div class="summary-card summary-teal" onclick="document.getElementById('alertList').scrollIntoView({behavior:'smooth'})" role="button" tabindex="0">
+      <div class="summary-icon" aria-hidden="true">🔔🐾</div>
+      <div><div class="summary-title">Nearby Lost Cats</div><div class="summary-sub" id="lostCardSub">Loading your town's alerts…</div></div>
+    </div>
+    <div class="summary-card summary-orange">
+      <div class="summary-icon" aria-hidden="true">🛡️🐾</div>
+      <div><div class="summary-title">Safety Alerts</div><div class="summary-sub" id="safetyCardSub">Loading your town's alerts…</div></div>
+    </div>
     <div id="alertList"></div>
   </section>
 
@@ -106,14 +117,16 @@
     <button data-filter="outdoor">✅ Outdoor OK</button>
     <button data-filter="indoor">🏠 Indoor Only</button>
     <button data-filter="spotted">⚠️ Spotted Outside</button>
+    <button data-filter="tsr">🐾 TSR Cats</button>
   </div>
   <input id="search" type="search" placeholder="Search cats, owners, or home areas…">
 
-  <div id="map"></div>
+  <div class="map-card"><div id="map"></div><div class="map-live-label" id="mapLiveLabel">Map • Live</div></div>
   <p id="mapFallback" class="small" hidden>If the map does not load, the cat list below still works.</p>
   <p class="small">Tap the map to place your cat's approximate pin when adding a cat. Pins are approximate by design.</p>
 
   <h2>Cats</h2>
+  <p class="small">Distances are straight-line, from your current location, and home-pin distances are approximate because home pins are approximate by design.</p>
   <div id="catList"></div>
 
   <h2>Recent sightings</h2>
@@ -140,6 +153,20 @@
       <legend>Status *</legend>
       <label><input type="radio" name="status" value="outdoor" checked> ✅ Outdoor OK — roams on purpose. Neighbors can relax if they see them out.</label><br>
       <label><input type="radio" name="status" value="indoor"> 🏠 Indoor Only — should never be out. If spotted, neighbors alert you right away.</label>
+    </fieldset>
+    <fieldset>
+      <legend>TSR cat (Trap-Spay-Release)</legend>
+      <p class="small">Tick this if this is a TSR / Trap-Neuter-Return community cat — already spayed/neutered and released, not an owned pet in the usual way. Neighbours will see a TSR badge and know not to trap this cat again.</p>
+      <label><input type="checkbox" name="tsr"> 🐾 This is a TSR cat (Trap-Spay-Release / community cat, already spayed/neutered and released)</label><br>
+      <label><input type="checkbox" name="earTip"> ✂️ Ear-tipped (one ear tip clipped — the usual sign a TSR cat has already been spayed/neutered)</label>
+      <label>Colony / caretaker name (optional, display name only) <input name="colony" placeholder="e.g. Main St colony — caretaker Jade"></label>
+    </fieldset>
+    <fieldset>
+      <legend>Treats — most relevant for Outdoor OK cats, but set it for every cat</legend>
+      <p class="small">Neighbours should never assume treats are OK. If you do not pick one, this defaults to “Ask owner first”.</p>
+      <label><input type="radio" name="treats" value="ok"> 🍪 Treats OK — neighbours may give treats</label><br>
+      <label><input type="radio" name="treats" value="no"> 🚫 No treats please — please do not feed this cat</label><br>
+      <label><input type="radio" name="treats" value="ask" checked> ❓ Ask owner first</label>
     </fieldset>
     <fieldset>
       <legend>Pick a photo</legend>
@@ -202,9 +229,17 @@
     <div id="myCatList"></div>
     <p><button type="button" id="addAnotherCatBtn2">🐾 Add another cat</button></p>
   </section>
+
+  <section id="tab-tsr" class="tab-panel" data-panel="tsr" hidden>
+    <h2 class="cute-h">🐾 TSR Cats — your town only</h2>
+    <p class="paw-note">🐾 TSR = Trap-Spay-Release community cats, already spayed/neutered and released — please do not trap again.</p>
+    <p class="small">These are community cats, not owned pets in the usual way. Look for the TSR badge, the ear-tip note, and the colony / caretaker name. Treats still apply per cat (default: Ask owner first). Distances are straight-line and home-pin distances are approximate, as elsewhere.</p>
+    <p><button type="button" onclick="showTsrOnMap()">🗺️ View TSR cats on the map</button> <button type="button" onclick="goToAddCat()">🐾 Add a TSR cat</button></p>
+    <div id="tsrCatList"></div>
+  </section>
 </main>
 
-<footer><svg class="paw-logo" viewBox="0 0 100 118" role="img" aria-label="Paw Map Pin logo"><g stroke="#0f2a22" stroke-width="3" stroke-linejoin="round"><path d="M30 30 L24 8 L48 20 Z" fill="#fffdf6"/><path d="M70 30 L76 8 L52 20 Z" fill="#fffdf6"/><path d="M34 26 L31 15 L42 21 Z" fill="#e07a2e" stroke="none"/><path d="M66 26 L69 15 L58 21 Z" fill="#e07a2e" stroke="none"/></g><path d="M50 18 C30 18 16 33 16 50 C16 70 32 92 50 112 C68 92 84 70 84 50 C84 33 70 18 50 18 Z" fill="#145c3f" stroke="#0f2a22" stroke-width="3"/><circle cx="50" cy="50" r="24" fill="#fffdf6"/><g fill="#e07a2e"><ellipse cx="50" cy="58" rx="9" ry="7"/><circle cx="36" cy="46" r="4.5"/><circle cx="46" cy="40" r="4.5"/><circle cx="54" cy="40" r="4.5"/><circle cx="64" cy="46" r="4.5"/></g></svg> Where in the Whiskers? — Maine · One app, locked to your own town · Pins are approximate by design, except exact sighting pins. · <a href="/privacy">Privacy Policy</a></footer>
+<footer><svg class="paw-logo" viewBox="0 0 100 118" role="img" aria-label="Paw Map Pin logo"><g stroke="#ffffff" stroke-width="4" stroke-linejoin="round"><path d="M30 30 L24 8 L48 20 Z" fill="#159aa5"/><path d="M70 30 L76 8 L52 20 Z" fill="#159aa5"/><path d="M34 26 L31 15 L42 21 Z" fill="#8fd8de" stroke="none"/><path d="M66 26 L69 15 L58 21 Z" fill="#8fd8de" stroke="none"/></g><path d="M50 18 C30 18 16 33 16 50 C16 70 32 92 50 112 C68 92 84 70 84 50 C84 33 70 18 50 18 Z" fill="#159aa5" stroke="#ffffff" stroke-width="5"/><g fill="#8fd8de"><ellipse cx="50" cy="58" rx="9" ry="7"/><circle cx="36" cy="46" r="4.5"/><circle cx="46" cy="40" r="4.5"/><circle cx="54" cy="40" r="4.5"/><circle cx="64" cy="46" r="4.5"/></g></svg> Where in the Whiskers? — Maine · One app, locked to your own town · Pins are approximate by design, except exact sighting pins. · <a href="/privacy">Privacy Policy</a></footer>
 
 <div id="modal" hidden>
   <div class="modal-box">

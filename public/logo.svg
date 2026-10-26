@@ -2,15 +2,14 @@
   <!-- Paw Map Pin: a map pin shaped like a cat head, with a paw print in the middle.
        Original SVG inspired by Jade's chosen Paw Map Pin mockup — simple bold shapes
        only, so it stays readable at favicon / small sizes. No text inside the logo. -->
-  <g stroke="#0f2a22" stroke-width="3" stroke-linejoin="round">
-    <path d="M30 30 L24 8 L48 20 Z" fill="#fffdf6"/>
+  <g stroke="#ffffff" stroke-width="4" stroke-linejoin="round">
+    <path d="M30 30 L24 8 L48 20 Z" fill="#159aa5"/>
     <path d="M70 30 L76 8 L52 20 Z" fill="#fffdf6"/>
-    <path d="M34 26 L31 15 L42 21 Z" fill="#e07a2e" stroke="none"/>
-    <path d="M66 26 L69 15 L58 21 Z" fill="#e07a2e" stroke="none"/>
+    <path d="M34 26 L31 15 L42 21 Z" fill="#ffffff" stroke="none"/>
+    <path d="M66 26 L69 15 L58 21 Z" fill="#ffffff" stroke="none"/>
   </g>
-  <path d="M50 18 C30 18 16 33 16 50 C16 70 32 92 50 112 C68 92 84 70 84 50 C84 33 70 18 50 18 Z" fill="#145c3f" stroke="#0f2a22" stroke-width="3"/>
-  <circle cx="50" cy="50" r="24" fill="#fffdf6"/>
-  <g fill="#e07a2e">
+  <path d="M50 18 C30 18 16 33 16 50 C16 70 32 92 50 112 C68 92 84 70 84 50 C84 33 70 18 50 18 Z" fill="#159aa5" stroke="#ffffff" stroke-width="5" stroke-width="3"/>
+  <g fill="#8fd8de">
     <ellipse cx="50" cy="58" rx="9" ry="7"/>
     <circle cx="36" cy="46" r="4.5"/>
     <circle cx="46" cy="40" r="4.5"/>

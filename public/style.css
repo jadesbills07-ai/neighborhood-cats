@@ -18,7 +18,13 @@ header,main,footer{position:relative;z-index:1}
 header{background:linear-gradient(135deg,#0f2a22 0%,#145c3f 55%,#b85c1e 130%);color:#fff;padding:16px 16px 12px;position:relative;overflow:hidden}
 .header-detective{position:absolute;right:12px;top:8px;width:110px;height:110px;opacity:.95;pointer-events:none;z-index:0}
 .header-detective svg{width:100%;height:100%;display:block}
-header h1{margin:0;font-size:34px;letter-spacing:.3px;position:relative;z-index:1;padding-right:124px;font-family:'Chewy','Fredoka','Baloo 2','Comic Sans MS','Trebuchet MS',cursive,sans-serif;font-weight:400;line-height:1.2}
+header h1{margin:0;font-size:34px;letter-spacing:.3px;position:relative;z-index:1;padding-right:124px;font-family:'Chewy','Fredoka','Baloo 2','Comic Sans MS','Trebuchet MS',cursive,sans-serif;font-weight:400;line-height:1.2;word-break:keep-all;overflow-wrap:normal}
+/* Header-wrap fix: "Whiskers?" was split as "Whi / skers?" on phones
+   because the paw-dot "i" is an inline-block span inside the word,
+   giving the browser a break opportunity mid-word. This wrapper keeps
+   the whole word together: it may move to the next line whole
+   ("Where in the / Whiskers?"), but never splits mid-word. */
+.header-word{white-space:nowrap;display:inline-block}
 /* Cat-font touch: the header name uses Chewy, a free Google Font with
    a bubbly, slightly handwritten, bouncy feel — similar in spirit to
    a playful cat font, but its own letterforms, not a copy of any
@@ -63,7 +69,8 @@ header .tagline,header .paw-row,header .whisker-divider,header .small,header .co
 .loud-alert button{background:#fff;color:#111}
 @keyframes flash{0%,100%{opacity:1}50%{opacity:.75}}
 footer{padding:16px;text-align:center;color:#555;font-size:15px}
-@media (max-width:480px){header h1{font-size:26px}header h1 .paw-logo{width:34px;height:40px}.main-tabs button{font-size:15px;min-height:56px;padding:10px 6px}.tabs{grid-template-columns:repeat(2,1fr)}.tabs button{font-size:15px;min-height:48px}.header-detective{width:72px;height:72px;right:8px;top:6px}header h1,header .tagline,header .paw-row,header .whisker-divider,header .small,header .counts{padding-right:80px}body::before{width:220px;height:220px;right:-30px;bottom:-10px;opacity:.035}}
+@media (max-width:480px){header h1{font-size:24px}header h1 .paw-logo{width:32px;height:38px}.main-tabs button{font-size:15px;min-height:56px;padding:10px 6px}.tabs{grid-template-columns:repeat(2,1fr)}.tabs button{font-size:15px;min-height:48px}.header-detective{width:60px;height:60px;right:8px;top:6px;opacity:.85}header h1,header .tagline,header .paw-row,header .whisker-divider,header .small,header .counts{padding-right:68px}body::before{width:220px;height:220px;right:-30px;bottom:-10px;opacity:.035}}
+@media (max-width:380px){header h1{font-size:22px;line-height:1.15}header h1 .paw-logo{width:30px;height:35px}.header-detective{width:56px;height:56px;opacity:.8}header h1,header .tagline,header .paw-row,header .whisker-divider,header .small,header .counts{padding-right:64px}}
 
 /* MOBILE-FIRST: phone-first layout (Jade: site felt PC-like) */
 /* App-like centred column on larger screens, full width on phones.
@@ -95,11 +102,11 @@ button{min-height:48px;padding:12px 16px;font-size:17px}
   #map{height:440px;margin:0;border-radius:12px}
   /* Header sized for a phone, not desktop-large. */
   header{padding:14px 14px 12px}
-  header h1{font-size:28px;line-height:1.15;padding-right:76px}
-  header h1 .paw-logo{width:38px;height:45px}
-  header .tagline{font-size:16px;padding-right:76px}
-  header .paw-row,header .whisker-divider,header .small,header .counts{padding-right:76px}
-  .header-detective{width:68px;height:68px;right:8px;top:6px}
+  header h1{font-size:25px;line-height:1.15;padding-right:68px;word-break:keep-all;overflow-wrap:normal}
+  header h1 .paw-logo{width:32px;height:38px}
+  header .tagline{font-size:16px;padding-right:68px}
+  header .paw-row,header .whisker-divider,header .small,header .counts{padding-right:68px}
+  .header-detective{width:60px;height:60px;right:8px;top:6px;opacity:.85}
   /* Stacked, full-width buttons so thumbs do not mis-tap. */
   main button,section#join button,.card button{width:100%;margin:6px 0}
   main a:has(>button),section#join a:has(>button){display:block;width:100%}
@@ -120,4 +127,107 @@ button{min-height:48px;padding:12px 16px;font-size:17px}
 @media (min-width:561px){
   /* Desktop stays usable as a centred app column, not stretched wide. */
   #map{height:380px}
+}
+
+/* HEADER-WRAP FIX (phone, final overrides — must stay after MOBILE-FIRST
+   so the smaller sizes win at ≤480px / ≤380px, not the ≤600px sizes).
+   Root cause: the paw-dot "i" is an inline-block span inside "Whiskers?",
+   so browsers could break the word mid-word as "Whi / skers?".
+   .header-word (white-space:nowrap) keeps "Whiskers?" whole; it moves
+   to its own line if needed ("Where in the / Whiskers?"), never splits.
+   Tagline/counts keep matching right padding so they never run under
+   the detective-cat illustration. */
+@media (max-width:480px){
+  header h1{font-size:24px}
+  header h1 .paw-logo{width:32px;height:38px}
+  .header-detective{width:60px;height:60px;opacity:.85}
+  header h1,header .tagline,header .paw-row,header .whisker-divider,header .small,header .counts{padding-right:68px}
+}
+@media (max-width:380px){
+  header h1{font-size:22px}
+  header h1 .paw-logo{width:30px;height:35px}
+  .header-detective{width:56px;height:56px;opacity:.8}
+  header h1,header .tagline,header .paw-row,header .whisker-divider,header .small,header .counts{padding-right:64px}
+}
+
+/* MOCKUP REDESIGN (Jade's reference image): rounded gradient header,
+   literal cat-face tabs, cream background, rounded cards/map.
+   This block is LAST so it wins over earlier header/tab/map rules.
+   No feature behaviour changes here — only layout/colour. */
+body{background:#fff8ec}
+/* Faint detective-cat watermark, CENTRED in the cream background,
+   not crowding the header. Same light cat + magnifier, very faint. */
+body::before{right:auto;left:50%;top:48%;bottom:auto;transform:translate(-50%,-50%);width:420px;height:420px;opacity:.04;background-size:contain}
+@media (max-width:480px){body::before{width:280px;height:280px;opacity:.035}}
+/* Rounded-rectangle header: teal -> orange gradient, NOT a full-width bar. */
+header{background:linear-gradient(90deg,#159aa5 0%,#4fae8a 45%,#ff9a3d 100%);border-radius:24px;margin:12px auto;padding:18px 18px 14px;overflow:visible;box-shadow:0 4px 14px rgba(20,90,90,.18)}
+.header-top{display:flex;align-items:center;gap:14px}
+.header-top .paw-logo{width:88px;height:104px;flex:none}
+header h1{font-size:42px;line-height:1.05;padding-right:0;color:#fff}
+header h1 .paw-logo{width:88px;height:104px}
+.header-line{display:block}
+header .tagline,header .paw-row,header .whisker-divider,header .small,header .counts{padding-right:0;color:#fff}
+header .tagline{font-size:16px;opacity:.95}
+header .counts{opacity:.95}
+header .paw-row{display:none}
+header .whisker-divider{display:none}
+.cat-i-paw{color:#fff}
+/* Join screen matches the same header/cream/rounded-card look. */
+section#join.card,main .card{background:#fff;border:1px solid #f0dfba;border-radius:24px;box-shadow:0 2px 10px rgba(180,120,40,.10)}
+/* Literal cat-face tabs: round faces, ears on top, spaced apart.
+   Active = orange (Local Alerts), inactive = teal (Map, My Profile).
+   Text is centred inside the face; "Local Alerts" is two lines. */
+.main-tabs{gap:12px;padding:16px 0 0}
+.main-tabs button{min-height:118px;height:118px;border:0;border-radius:50%;background:#5ab8c0;color:#fff;font-size:20px;line-height:1.15;box-shadow:0 3px 8px rgba(20,90,90,.18)}
+.main-tabs button::before,.main-tabs button::after{top:-20px;width:38px;height:30px;background:#5ab8c0;clip-path:polygon(0 100%,50% 0,100% 100%)}
+.main-tabs button::before{left:22px}
+.main-tabs button::after{right:22px}
+.main-tabs button.active{background:#ff9a3d;border-color:#ff9a3d;color:#fff;box-shadow:0 3px 10px rgba(200,90,10,.30)}
+.main-tabs button.active::before,.main-tabs button.active::after{background:#ff9a3d}
+/* Summary cards below the tabs, in the mockup palette. Real data only:
+   counts are filled from the app's own cats/sightings (see app.js). */
+.summary-card{display:flex;align-items:center;gap:14px;border-radius:24px;padding:16px 18px;margin:12px 0;box-shadow:0 2px 10px rgba(20,90,90,.12);cursor:pointer}
+.summary-teal{background:#7cc7cd;color:#0f3a4a}
+.summary-orange{background:#ffab5e;color:#5a2300}
+.summary-icon{font-size:34px;flex:none}
+.summary-title{font-size:24px;line-height:1.1}
+.summary-sub{font-size:16px;line-height:1.3;opacity:.9}
+/* Rounded map card: existing Leaflet map, rounded corners, live label. */
+.map-card{border-radius:24px;overflow:hidden;position:relative;box-shadow:0 2px 12px rgba(20,90,90,.14);margin:0}
+.map-card #map{height:440px;margin:0;border:0;border-radius:0}
+.map-live-label{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);background:rgba(255,255,255,.92);color:#17241d;border-radius:20px;padding:6px 14px;font-size:15px;white-space:nowrap;box-shadow:0 1px 6px rgba(0,0,0,.15);z-index:500;pointer-events:none}
+@media (max-width:600px){
+  header{padding:16px 14px 12px;border-radius:24px}
+  .header-top{gap:10px}
+  .header-top .paw-logo,header h1 .paw-logo{width:68px;height:80px}
+  header h1{font-size:32px;line-height:1.05;padding-right:0}
+  header .tagline{font-size:15px;padding-right:0}
+  header .paw-row,header .whisker-divider,header .small,header .counts{padding-right:0}
+  .main-tabs{gap:8px}
+  .main-tabs button{min-height:104px;height:104px;font-size:17px;padding:10px 4px}
+  .main-tabs button::before,.main-tabs button::after{top:-16px;width:30px;height:24px}
+  .main-tabs button::before{left:14px}
+  .main-tabs button::after{right:14px}
+  .map-card #map{height:440px}
+  .summary-title{font-size:22px}
+}
+@media (max-width:380px){
+  header h1{font-size:28px}
+  .header-top .paw-logo,header h1 .paw-logo{width:60px;height:71px}
+  .main-tabs button{min-height:96px;height:96px;font-size:16px}
+}
+
+/* Treats status — "No treats please" must not be missed. */
+.treats{font-weight:600}
+.treats-no{color:#b42318;background:#fdecea;border:2px solid #e57373;border-radius:10px;padding:6px 10px}
+.tsr-badge{color:#145c3f;background:#d9f2e3;border:2px solid #1a9e4f;border-radius:10px;padding:6px 10px;font-weight:700}
+
+/* 4 main tabs (Local Alerts, Map, My Profile, TSR Cats): 4-across
+   cat faces on the 560px desktop column, but a 2x2 grid on phones
+   (<=600px) so four round faces are never squeezed into one row.
+   Appended last so this wins over the earlier 3-column rule. */
+.main-tabs{grid-template-columns:repeat(4,1fr)}
+@media (max-width:600px){
+  .main-tabs{grid-template-columns:repeat(2,1fr);gap:20px 8px}
+  .main-tabs button{height:96px;min-height:96px}
 }
