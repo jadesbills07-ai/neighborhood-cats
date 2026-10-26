@@ -1,4 +1,86 @@
-# Neighborhood Cats — Shared Version (Maine, ZIP + county + town, locked to your town)
+# Where in the Whiskers? — Shared Version (Maine, ZIP + county + town, locked to your town)
+
+Formerly called Neighborhood Cats. The GitHub repo and Render service
+names are unchanged — only the display name in the app, header, footer,
+and this README changed.
+
+## 3 tabs, in order
+
+1. **Local Alerts** — a dedicated alerts feed for your locked town only:
+   newest first, Lost / Emergency cats at the top, then sightings
+   (including exact GPS sighting pins with time) and loud-alert entries.
+   Each entry has “View on map”, which switches to the Map tab and
+   centers on that cat / GPS pin. The feed reuses the existing
+   `/api/alerts` and `/api/sightings` data — it invents no alerts.
+2. **Map** — the existing map view: map pins, cat-filter tabs, search
+   within your town, cat list, Add Your Cat form, cat detail, sighting
+   and message flows, unchanged in function.
+3. **My Profile** — your profile page for this device: display name,
+   ZIP, county, town, and GPS-confirmed status, plus optional contact /
+   notes for your own emergency use. Most importantly, it makes adding
+   **multiple cats** easy: a clear “Add another cat” button (which jumps
+   to the Add Your Cat form on the Map tab, pre-filled with your display
+   name and town) and a “My Cats” list — cats in this town whose owner
+   matches your display name — with shortcuts to view each cat and to
+   toggle Emergency Mode for it (owner PIN rules unchanged).
+
+## Google sign-in accounts (Google only — no passwords)
+
+**This is the account system Jade chose.** Sign in with Google
+(from the join screen or the My Profile tab), and your profile and
+your cats follow you to any phone or browser: sign out here, sign
+in somewhere else, and they are right there. Cats are linked to
+your account (`ownerId`), so only the signed-in owner can toggle
+Emergency Mode for their own cats — the owner PIN remains as an
+extra check where one was set. No passwords are stored at all;
+Google handles sign-in.
+
+**Zip-only signup.** After your first Google sign-in you enter
+ONLY a 5-digit Maine ZIP code, then tap GPS confirmation. County
+and town are auto-filled from a curated Maine ZIP lookup
+(`zipLookup.js` — Lisbon Falls 04252 → Androscoggin / Lisbon
+Falls, plus other pairings the author was confident about). The
+app shows "Looks like you're in [Town], [County] County — is that
+right?" with Yes / Correct it buttons. If a ZIP is not in the
+lookup, you pick county and town manually as a fallback — nothing
+is guessed. GPS is a confirmation flag (in-Maine bounding box),
+not a hard border check, and GPS coordinates are never stored as
+a home location. Your town lock remains: you only see your town,
+and changing town requires a new ZIP + GPS step.
+
+**Guest behaviour.** Guests can still browse a town read-only, so
+existing live users are not locked out. Adding cats, messaging,
+sighting reports, Emergency Mode, and clearing example cats
+require a signed-in account (the server returns 401 otherwise).
+API responses never include a Google ID, an email, or session
+material — only display names and town scope, as before.
+
+**Google sign-in will NOT work live until setup is done.** See
+`GOOGLE_SETUP.md` for the exact Google Cloud Console steps
+(create OAuth client, authorized redirect URI
+`https://neighborhood-cats.onrender.com/auth/google/callback`,
+copy Client ID/secret and `SESSION_SECRET` into Render env vars,
+restart). Without `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
+the app still runs and shows a clear "Google sign-in is not set
+up yet" state — it never crashes and never claims Google login
+works without credentials. Real Google OAuth cannot be fully
+tested locally without real Google credentials (see test notes
+below).
+
+**Old profile limitation — superseded for signed-in users.**
+Guest profile details are still stored in this browser / session
+only (sessionStorage) and do not travel. Signed-in users' profiles
+live on the server. “My Cats” for signed-in users lists cats by
+account ownership; for guests / legacy cats with no owner it
+falls back to display-name matching, which is a convenience list,
+not proof of ownership.
+
+**Decorations.** Warm, playful cat theme for “Where in the Whiskers?”:
+paw-print accents and a whisker divider in the header, a warm
+cream/orange/teal colour scheme, and cute paw section headers. Buttons,
+tabs, map pins, the emergency banner, and the loud-alert banner keep
+their high-contrast colours and stay clearly readable, and the layout
+stays mobile-friendly for Android Chrome.
 
 This is the **shared** version. Unlike the earlier session-only page, this one
 has a central server database. When one neighbor adds a cat, sends a sighting,
@@ -186,12 +268,14 @@ neighborhood data.
 
 ## 5. Honest limits — please read this
 
-- **No accounts, no code gate any more.** Anyone who knows the link and
-  a Maine ZIP can join a town's view and see that town's cats. Do not
-  post sensitive personal information, phone numbers, emails, or exact
-  addresses in normal fields. Display names only — except for the
-  optional Emergency Details, which you should only fill in knowing they
-  become visible to everyone in your town when Emergency Mode is ON.
+- **Accounts, no code gate any more.** Anyone who knows the link and
+  a Maine ZIP can browse a town's view and see that town's cats, but
+  adding cats, messaging, sightings, and Emergency Mode require a
+  signed-in Google account. Do not post sensitive personal information,
+  phone numbers, emails, or exact addresses in normal fields. Display
+  names only — except for the optional Emergency Details, which you
+  should only fill in knowing they become visible to everyone in your
+  town when Emergency Mode is ON.
 - **Loud alert limits — read this before relying on it.** A web app
   cannot guarantee it will override a phone on silent / Do Not Disturb,
   and it cannot reliably wake a fully closed browser without a native
@@ -228,16 +312,38 @@ neighborhood data.
 ## Files
 
 - `server.js` — Express server + shared database (data/db.json)
-- `public/index.html`, `public/style.css`, `public/app.js` — the map,
-  cat list, add-cat form, sightings, message threads, GPS join/sighting,
-  Emergency Mode, and the loud sighting alert
-- `package.json` — `npm install` / `npm start`, no build step
+- `zipLookup.js` — curated Maine ZIP → town/county lookup for
+  zip-only signup (fallback to manual county/town if a ZIP is missing)
+- `GOOGLE_SETUP.md` — exact Google Cloud + Render setup steps; Google
+  sign-in does NOT work live until those env vars are set
+- `public/index.html`, `public/style.css`, `public/app.js` — the 3-tab
+  layout (Local Alerts / Map / My Profile), Google sign-in / sign-out
+  and ZIP-only account setup, the map, cat list, add-cat form,
+  sightings, message threads, GPS join/sighting, Emergency Mode,
+  and the loud sighting alert
+- `package.json` — `npm install` / `npm start`, no build step, no new
+  dependencies (Google OAuth is a direct code flow in server.js)
 
 ## API (for checking / testing)
 
 No code header is needed any more. Listings require scope.
 
 - `GET /api/health` — server is up, and how many cats it holds
+- `GET /api/auth/status` — `{ googleConfigured, signedIn, user }`
+  (user = display name + town scope only, never Google ID/email)
+- `GET /auth/google` — start Google sign-in (redirects to
+  `/?auth=not-configured` if credentials are missing)
+- `GET /auth/google/callback` — Google OAuth callback (server-side
+  code exchange; secret never in the browser)
+- `GET /auth/logout` / `POST /api/auth/logout` — sign out
+- `GET /api/me` — signed-in user (display name + town scope only)
+- `GET /api/me/cats` — signed-in user's own cats (auth required)
+- `POST /api/me/setup` / `POST /api/me/scope` — zip-only account
+  setup / town change: `{ zip, gpsConfirmed, county?, town? }`
+  (county/town auto-filled from ZIP, or required manually if the
+  ZIP is not in the lookup)
+- `GET /api/zip-lookup?zip=04252` — `{ found, town, county }` for a
+  Maine ZIP, or `{ found: false }` (never guessed)
 - `GET /api/counties` — the 16 Maine counties
 - `GET /api/towns?county=Cumberland` — towns already added in that county
 - `GET /api/cats?county=…&town=…&zip=…` — cats for that town ONLY

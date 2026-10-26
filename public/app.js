@@ -1,4 +1,5 @@
-// Neighborhood Cats — shared frontend.
+// Where in the Whiskers? — shared frontend (formerly Neighborhood Cats).
+// Repo and deployed URL are unchanged; only the display name changed.
 // Cat data lives on the SERVER (GET/POST /api/cats). The browser only
 // remembers the visitor's display name and ZIP/county/town scope plus a
 // GPS-confirmed flag — never cats, never GPS coordinates as a home
@@ -21,6 +22,51 @@ function isMaineZip(v) { const z = String(v || '').trim(); return /^\d{5}$/.test
 function inMaine(lat, lng) { return lat >= 43.0 && lat <= 47.5 && lng >= -71.2 && lng <= -66.9; }
 let map = null, markers = [], pendingPin = null, chosenPhoto = '🐈';
 let uploadedPhotoData = null;
+// Google account state. Guests can browse a town read-only; adding
+// cats, messaging, sightings, and Emergency Mode require sign-in.
+let signedIn = false, googleConfigured = false, accountUser = null, myCats = [];
+let setupGpsConfirmed = false, setupLookup = null;
+async function refreshAuth() {
+  try {
+    const s = await api('/api/auth/status');
+    signedIn = !!s.signedIn; googleConfigured = !!s.googleConfigured; accountUser = s.user || null;
+  } catch (e) { signedIn = false; accountUser = null; }
+  updateAuthUI();
+  if (signedIn) { try { myCats = await api('/api/me/cats'); } catch (e) { myCats = []; } }
+  return { signedIn, user: accountUser };
+}
+function updateAuthUI() {
+  const status = signedIn
+    ? (accountUser && accountUser.hasProfile ? `✓ Signed in with Google as ${accountUser.displayName} — ${accountUser.county} / ${accountUser.town} (${accountUser.zip}) · GPS: ${accountUser.gpsConfirmed ? 'confirmed ✓' : 'unverified (ZIP only)'}`
+      : `✓ Signed in with Google as ${accountUser ? accountUser.displayName : ''} — please finish ZIP setup below so your town is set.`)
+    : (googleConfigured ? 'Not signed in. Sign in with Google to add cats, message, report sightings, and use Emergency Mode. Guests can browse a town read-only.'
+      : '⚠️ Google sign-in is not set up yet on this server (no Google credentials configured). You can still browse as a guest. See GOOGLE_SETUP.md for the owner setup steps.');
+  const a = $('authStatus'); if (a) a.textContent = status;
+  const p = $('profileAuthStatus'); if (p) p.textContent = status;
+  const signInBtns = [$('googleSignInBtn'), $('profileGoogleSignInBtn')];
+  signInBtns.forEach((b) => { if (b) b.closest('p, a') && (b.parentElement.hidden = signedIn); });
+  // Sign-in buttons are <a><button> wrappers; hide the anchor when signed in.
+  document.querySelectorAll('#googleSignInBtn, #profileGoogleSignInBtn').forEach((b) => { if (b.parentElement && b.parentElement.tagName === 'A') b.parentElement.hidden = signedIn; });
+  const outBtns = [$('googleSignOutBtn'), $('profileGoogleSignOutBtn')];
+  outBtns.forEach((b) => { if (b) b.hidden = !signedIn; });
+  const setup = $('accountSetup');
+  if (setup) setup.hidden = !(signedIn && accountUser && !accountUser.hasProfile);
+  if (!googleConfigured) {
+    document.querySelectorAll('#googleSignInBtn, #profileGoogleSignInBtn').forEach((b) => { b.disabled = true; });
+  }
+}
+function signOut() { window.location.href = '/auth/logout'; }
+async function enterWithAccount(user) {
+  displayName = user.displayName || displayName; zip = user.zip; selectedCounty = user.county; selectedTown = user.town; gpsConfirmed = !!user.gpsConfirmed;
+  sessionStorage.setItem('nc-name', displayName); sessionStorage.setItem('nc-zip', zip);
+  sessionStorage.setItem('nc-county', selectedCounty); sessionStorage.setItem('nc-town', selectedTown);
+  sessionStorage.setItem('nc-gps', gpsConfirmed ? '1' : '0');
+  $('join').hidden = true; $('app').hidden = false; initMap();
+  if ($('loudToggle')) $('loudToggle').checked = loudEnabled();
+  try { await refresh(); syncAddFormLocation(); fetchTownSuggestions(selectedCounty, $('addTownList')); switchMainTab('alerts'); syncProfileForm(); } catch (e) {}
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(() => { if (!$('app').hidden) refresh().catch(() => {}); }, 30000);
+}
 let spotGps = null; // this sighting's GPS pin only — never a home location
 let currentAlert = null; // {catId, catName, sightingId, location, lat, lng}
 let refreshTimer = null;
@@ -89,8 +135,18 @@ window.dismissLoudAlert = function () {
 window.checkNowAlert = function () {
   const alert = currentAlert;
   if (!alert) return;
+  switchMainTab('map');
   if (map && alert.lat != null && alert.lng != null) map.setView([alert.lat, alert.lng], 16);
   openCat(alert.catId);
+};
+// Jump from a Local Alerts entry to that cat on the Map tab, centering
+// on its exact GPS sighting pin when one exists.
+window.viewAlertOnMap = function (catId, lat, lng) {
+  switchMainTab('map');
+  if (map && lat != null && lng != null && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))) {
+    map.setView([Number(lat), Number(lng)], 16);
+  }
+  openCat(catId);
 };
 window.testAlertSound = function () {
   const ok = playAlertSound();
@@ -231,7 +287,111 @@ function render() {
     </article>`).join('') || '<p>No cats match this filter yet.</p>';
   $('sightingFeed').innerHTML = sightings.slice(0, 20).map((s) => `
     <div class="cat"><strong>${escapeHtml(s.catName)}</strong> — ${escapeHtml(s.location)}${s.lat != null ? `<br><span class="small">📍 Exact GPS pin: ${Number(s.lat).toFixed(5)}, ${Number(s.lng).toFixed(5)} (where the spotter was standing)</span>` : ''}<br>${escapeHtml(s.note || '')}<br><span class="small">Reported by ${escapeHtml(s.reporter)} · ${new Date(s.createdAt).toLocaleString()}</span></div>`).join('') || '<p>No sightings yet.</p>';
+  renderAlerts();
+  renderProfile();
   renderMap();
+}
+
+// ---- 3 main tabs: 1 Local Alerts, 2 Map, 3 My Profile ----
+// Tab order lives in index.html (buttons + panels in the same order).
+// switchMainTab is the only place that knows the tab names, so the
+// order can be swapped later by moving the HTML blocks together.
+let currentMainTab = 'alerts';
+function switchMainTab(name) {
+  if (!['alerts', 'map', 'profile'].includes(name)) return;
+  currentMainTab = name;
+  document.querySelectorAll('.main-tab-btn').forEach((b) => {
+    const active = b.dataset.mainTab === name;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  document.querySelectorAll('.tab-panel').forEach((p) => { p.hidden = p.dataset.panel !== name; });
+  if (name === 'profile') syncProfileForm();
+  if (name === 'map' && map) {
+    // Leaflet was initialised while the map panel was hidden; it needs
+    // a resize once it becomes visible, or tiles render blank.
+    setTimeout(() => { try { map.invalidateSize(); } catch (e) {} }, 60);
+  }
+}
+function goToAddCat() {
+  // The single Add Your Cat form lives on the Map tab (one form, one
+  // set of IDs — it is not duplicated on My Profile). From My Profile,
+  // "Add another cat" jumps there and pre-fills owner + town.
+  switchMainTab('map');
+  const ownerInput = document.querySelector('#addCat [name="owner"]');
+  if (ownerInput && displayName) ownerInput.value = displayName;
+  syncAddFormLocation();
+  const contact = document.querySelector('#addCat [name="emergencyContact"]');
+  const savedContact = sessionStorage.getItem('nc-profile-contact') || '';
+  if (contact && savedContact && !contact.value.trim()) contact.value = savedContact;
+  const form = $('addCat');
+  if (form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function syncProfileForm() {
+  const nameEl = $('profileName');
+  if (nameEl && document.activeElement !== nameEl) nameEl.value = displayName || '';
+  const contactEl = $('profileContact');
+  if (contactEl && document.activeElement !== contactEl) contactEl.value = sessionStorage.getItem('nc-profile-contact') || '';
+  const notesEl = $('profileNotes');
+  if (notesEl && document.activeElement !== notesEl) notesEl.value = sessionStorage.getItem('nc-profile-notes') || '';
+  renderProfile();
+}
+function renderAlerts() {
+  const el = $('alertList');
+  if (!el) return;
+  const entries = [];
+  // Lost / Emergency cats first — they are the most urgent alerts.
+  for (const cat of cats.filter((c) => c.emergencyOn)) {
+    entries.push({ kind: 'emergency', cat, createdAt: cat.createdAt, location: cat.homeArea || '', lat: cat.lat, lng: cat.lng, text: '🚨 LOST / Emergency — the owner marked this cat lost. Tap to see the emergency details the owner chose to share.' });
+  }
+  // Then every sighting, newest first. Sighting data comes from the
+  // server (/api/sightings); nothing here is invented. Loud-alert
+  // sightings (Indoor Only) are flagged with 🚨, others with 📍.
+  const sortedSightings = [...sightings].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  for (const s of sortedSightings) {
+    const cat = cats.find((c) => c.id === s.catId);
+    entries.push({ kind: s.alert ? 'loud' : 'sighting', cat, sighting: s, createdAt: s.createdAt, location: s.location, lat: s.lat, lng: s.lng, text: s.note || '' });
+  }
+  if (!entries.length) {
+    el.innerHTML = '<p class="paw-note">🐾 No alerts in your town yet. Good news — no indoor-only cats have been spotted outside, and no cats are in Lost / Emergency Mode.</p>';
+    return;
+  }
+  el.innerHTML = entries.map((e) => {
+    const cat = e.cat;
+    const name = cat ? escapeHtml(cat.name) : escapeHtml(e.sighting?.catName || 'A cat');
+    const gps = (e.lat != null && e.lng != null) ? `<br><span class="small">📍 Exact GPS pin: ${Number(e.lat).toFixed(5)}, ${Number(e.lng).toFixed(5)}${e.kind === 'loud' || e.kind === 'sighting' ? ' (where the spotter was standing)' : ''}</span>` : '';
+    const when = e.createdAt ? `<br><span class="small">${new Date(e.createdAt).toLocaleString()}${e.sighting ? ` · Reported by ${escapeHtml(e.sighting.reporter)}` : ''}</span>` : '';
+    const viewBtn = cat ? `<button onclick="viewAlertOnMap('${cat.id}', ${e.lat != null ? Number(e.lat) : 'null'}, ${e.lng != null ? Number(e.lng) : 'null'})">View on map</button> <button onclick="openCat('${cat.id}')">View cat</button>` : '';
+    const heading = e.kind === 'emergency' ? `🚨 LOST / EMERGENCY: ${name}` : (e.kind === 'loud' ? `🚨 Spotted outside (loud alert): ${name}` : `📍 Sighting: ${name}`);
+    return `<article class="cat ${e.kind === 'emergency' ? 'cat-emergency' : ''}"><h3>${heading}</h3><p>${escapeHtml(e.location)}${gps}${when}</p>${e.text ? `<p>${escapeHtml(e.text)}</p>` : ''}<p>${viewBtn}</p></article>`;
+  }).join('');
+}
+function renderProfile() {
+  const scopeEl = $('profileScope');
+  if (scopeEl) scopeEl.textContent = (selectedCounty && selectedTown) ? `Display name: ${displayName || '—'} · ZIP: ${zip} · ${selectedCounty} / ${selectedTown}` : 'Join a town first to see your profile.';
+  const gpsEl = $('profileGps');
+  if (gpsEl) gpsEl.textContent = `GPS join confirmation: ${gpsConfirmed ? 'confirmed ✓' : 'unverified (ZIP only) — tap “Confirm my location” on the join screen, or re-join, to confirm.'}`;
+  const listEl = $('myCatList');
+  if (!listEl) return;
+  // Signed-in users: My Cats = cats owned by their account (ownerId),
+  // fetched from /api/me/cats. Guests / legacy cats with no ownerId
+  // fall back to display-name matching, which is a convenience list,
+  // not proof of ownership. The owner PIN still governs Emergency
+  // Mode as an extra check where one was set.
+  const mine = signedIn ? myCats.filter((cat) => String(catTown(cat)).toLowerCase() === String(selectedTown || '').trim().toLowerCase())
+    : cats.filter((cat) => String(cat.owner || '').trim().toLowerCase() === String(displayName || '').trim().toLowerCase() && displayName);
+  if (!mine.length) {
+    listEl.innerHTML = '<p class="paw-note">🐾 You have not added a cat yet (with this display name, in this town). Tap “Add another cat” above — you can add as many as you like, one at a time.</p>';
+    return;
+  }
+  listEl.innerHTML = mine.map((cat) => `
+    <article class="cat ${cat.emergencyOn ? 'cat-emergency' : ''}">
+      <div class="photo">${photoHtml(cat, 56)}</div>
+      <h3>${escapeHtml(cat.name)}</h3>
+      <p><span class="badge ${cat.emergencyOn ? 'spotted' : (cat.spotted ? 'spotted' : cat.status)}">${statusLabel(cat)}</span> · ${escapeHtml(cat.homeArea || '')}</p>
+      <p><button onclick="openCat('${cat.id}')">View &amp; message</button> <button onclick="toggleEmergency('${cat.id}', ${cat.emergencyOn ? 'false' : 'true'})">${cat.emergencyOn ? 'Emergency OFF — cat found / safe' : 'Mark as Lost / Emergency'}</button></p>
+      <p class="small">${cat.hasPin ? 'Owner PIN required to toggle Emergency Mode.' : 'No owner PIN was set for this cat — anyone in town could toggle emergency mode. Add a PIN when you add a cat, if you can.'}</p>
+    </article>`).join('');
 }
 
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -277,6 +437,7 @@ window.openCat = function (id) {
 };
 
 window.toggleEmergency = async function (id, turnOn) {
+  if (!signedIn) { alert('Please sign in with Google to use Emergency Mode. Guests can browse only.'); switchMainTab('profile'); return; }
   const cat = cats.find((c) => c.id === id); if (!cat) return;
   let pin = '';
   if (turnOn) {
@@ -326,12 +487,14 @@ window.useSpotGps = function () {
 };
 
 window.sendMessage = async function (id) {
-  try { await api(`/api/cats/${id}/messages`, { method: 'POST', body: JSON.stringify({ author: displayName, text: $('msgText').value }) }); await refresh(); openCat(id); }
+  if (!signedIn) { $('modalError').textContent = 'Please sign in with Google to message an owner. Guests can browse only.'; return; }
+  try { await api(`/api/cats/${id}/messages`, { method: 'POST', body: JSON.stringify({ text: $('msgText').value }) }); await refresh(); openCat(id); }
   catch (e) { $('modalError').textContent = e.message; }
 };
 window.sendSighting = async function (id) {
+  if (!signedIn) { $('modalError').textContent = 'Please sign in with Google to report a sighting. Guests can browse only.'; return; }
   try {
-    const s = await api(`/api/cats/${id}/sightings`, { method: 'POST', body: JSON.stringify({ location: $('spotLocation').value, note: $('spotNote').value, reporter: displayName, lat: spotGps?.lat, lng: spotGps?.lng }) });
+    const s = await api(`/api/cats/${id}/sightings`, { method: 'POST', body: JSON.stringify({ location: $('spotLocation').value, note: $('spotNote').value, lat: spotGps?.lat, lng: spotGps?.lng }) });
     // Don't loud-alert the spotter for their own report on the next refresh.
     if (s && s.id) markAlertSeen(s.id);
     spotGps = null;
@@ -342,6 +505,7 @@ window.sendSighting = async function (id) {
 async function refresh() {
   cats = await api(`/api/cats?${scopeQuery()}`);
   sightings = await api(`/api/sightings?${scopeQuery()}`);
+  if (signedIn) { try { myCats = await api('/api/me/cats'); } catch (e) {} }
   render();
   checkUnseenAlerts();
 }
@@ -351,6 +515,28 @@ document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => {
   document.querySelectorAll('.tabs button').forEach((x) => x.classList.remove('active'));
   b.classList.add('active'); filter = b.dataset.filter; render();
 });
+// Main 3-tab navigation (separate class from the cat-filter tabs above).
+document.querySelectorAll('.main-tab-btn').forEach((b) => b.onclick = () => switchMainTab(b.dataset.mainTab));
+$('addAnotherCatBtn').onclick = goToAddCat;
+$('addAnotherCatBtn2').onclick = goToAddCat;
+$('profileChangeScopeBtn').onclick = () => $('changeScopeBtn').click();
+// Profile is session/browser-stored for this device only — never sent
+// to the server, never shown publicly. It only pre-fills the Add Cat
+// form's emergency contact (if empty) and matches "My Cats" by display
+// name. A different device or cleared browser data starts fresh.
+$('profileForm').onsubmit = (e) => {
+  e.preventDefault();
+  const newName = $('profileName').value.trim();
+  if (!newName) { $('profileSaved').textContent = 'Please enter a display name.'; return; }
+  displayName = newName;
+  sessionStorage.setItem('nc-name', displayName);
+  sessionStorage.setItem('nc-profile-contact', $('profileContact').value.trim());
+  sessionStorage.setItem('nc-profile-notes', $('profileNotes').value.trim());
+  const ownerInput = document.querySelector('#addCat [name="owner"]');
+  if (ownerInput) ownerInput.value = displayName;
+  $('profileSaved').textContent = '✓ Profile saved on this device. Your cats in this town are still shared on the server — only these profile details are device-local.';
+  renderProfile();
+};
 $('search').oninput = (e) => { search = e.target.value.trim().toLowerCase(); render(); };
 $('photoChoices').innerHTML = PHOTOS.map((p, i) => `<button type="button" class="photo-btn ${i === 0 ? 'selected' : ''}" data-photo="${p}">${p}</button>`).join('');
 document.querySelectorAll('.photo-btn').forEach((b) => b.onclick = () => {
@@ -382,6 +568,7 @@ $('photoUpload').onchange = async (e) => {
 $('photoRemove').onclick = clearUploadedPhoto;
 $('addCat').onsubmit = async (e) => {
   e.preventDefault();
+  if (!signedIn) { $('addError').textContent = 'Please sign in with Google to add a cat. Guests can browse only — sign in on the My Profile tab.'; switchMainTab('profile'); return; }
   const f = new FormData(e.target);
   const pin = String(f.get('ownerPin') || '').trim();
   if (pin && !/^\d{4,6}$/.test(pin)) { $('addError').textContent = 'Owner PIN must be 4–6 digits, or left blank.'; return; }
@@ -470,12 +657,86 @@ $('joinBtn').onclick = async () => {
   sessionStorage.setItem('nc-gps', gpsConfirmed ? '1' : '0');
   $('join').hidden = true; $('app').hidden = false; initMap();
   if ($('loudToggle')) $('loudToggle').checked = loudEnabled();
-  try { await refresh(); syncAddFormLocation(); fetchTownSuggestions(selectedCounty, $('addTownList')); } catch (err) { $('joinError').textContent = err.message; $('app').hidden = true; $('join').hidden = false; return; }
+  try { await refresh(); syncAddFormLocation(); fetchTownSuggestions(selectedCounty, $('addTownList')); switchMainTab('alerts'); syncProfileForm(); } catch (err) { $('joinError').textContent = err.message; $('app').hidden = true; $('join').hidden = false; return; }
   // Poll every 30 seconds while the app is open, so a new sighting in
   // your town triggers the loud alert without a manual refresh.
   if (refreshTimer) clearInterval(refreshTimer);
   refreshTimer = setInterval(() => { if (!$('app').hidden) refresh().catch(() => {}); }, 30000);
 };
+// ---- Google account setup: ZIP only, GPS confirmation, auto-fill ----
+// The user enters ONLY a ZIP. /api/zip-lookup fills county/town.
+// If the ZIP is not in the lookup, manual county/town is the fallback
+// — nothing is guessed. GPS is a confirmation flag only.
+if ($('googleSignOutBtn')) $('googleSignOutBtn').onclick = signOut;
+if ($('profileGoogleSignOutBtn')) $('profileGoogleSignOutBtn').onclick = signOut;
+if ($('setupGpsBtn')) $('setupGpsBtn').onclick = () => {
+  const status = $('setupGpsStatus');
+  if (!navigator.geolocation) { status.textContent = 'GPS is not available on this device. You can still continue with your ZIP only, marked unverified.'; setupGpsConfirmed = false; return; }
+  status.textContent = 'Getting your location…';
+  navigator.geolocation.getCurrentPosition((pos) => {
+    if (inMaine(pos.coords.latitude, pos.coords.longitude)) { setupGpsConfirmed = true; status.textContent = '✓ GPS confirmed — your device is in Maine. GPS is a confirmation flag only; your coordinates are not stored.'; }
+    else { setupGpsConfirmed = false; status.textContent = 'GPS shows a location outside Maine. You can still continue with your Maine ZIP, marked unverified — please double-check your ZIP.'; }
+  }, () => { setupGpsConfirmed = false; status.textContent = 'GPS was denied or unavailable. You can still continue with your ZIP only, marked unverified.'; }, { enableHighAccuracy: true, timeout: 10000 });
+};
+if ($('setupCheckBtn')) $('setupCheckBtn').onclick = async () => {
+  const z = $('setupZip').value.trim();
+  if (!isMaineZip(z)) { $('setupError').textContent = 'Please enter a valid 5-digit Maine ZIP code.'; return; }
+  $('setupError').textContent = '';
+  try {
+    const hit = await api(`/api/zip-lookup?zip=${encodeURIComponent(z)}`);
+    const preview = $('setupPreview'); preview.hidden = false;
+    if (hit.found) {
+      setupLookup = hit; $('setupManual').hidden = true;
+      preview.textContent = `Looks like you're in ${hit.town}, ${hit.county} County — is that right?`;
+      $('setupSaveBtn').hidden = false; $('setupSaveBtn').textContent = `Yes, that's my town — save & enter`;
+    } else {
+      setupLookup = null; $('setupManual').hidden = false;
+      preview.textContent = `That ZIP is not in the town lookup yet — please pick your county and town below to confirm it, then save.`;
+      $('setupSaveBtn').hidden = false; $('setupSaveBtn').textContent = 'Save my town & enter';
+    }
+  } catch (e) { $('setupError').textContent = e.message; }
+};
+if ($('setupSaveBtn')) $('setupSaveBtn').onclick = async () => {
+  const z = $('setupZip').value.trim();
+  const body = { zip: z, gpsConfirmed: setupGpsConfirmed };
+  if (!setupLookup) { body.county = $('setupCounty').value; body.town = $('setupTown').value.trim(); }
+  try {
+    const user = await api('/api/me/setup', { method: 'POST', body: JSON.stringify(body) });
+    accountUser = user; signedIn = true;
+    await enterWithAccount(user);
+  } catch (e) { $('setupError').textContent = e.message; }
+};
+// Changing town for a signed-in account: go back to the ZIP + GPS
+// setup step (not a free town switcher). Guests use Change town below.
+if ($('profileChangeScopeBtn')) {
+  const origProfileChange = $('profileChangeScopeBtn').onclick;
+  $('profileChangeScopeBtn').onclick = () => {
+    if (signedIn) {
+      $('app').hidden = true; $('join').hidden = false;
+      const setup = $('accountSetup'); if (setup) setup.hidden = false;
+      if (accountUser) $('setupZip').value = accountUser.zip || '';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (origProfileChange) origProfileChange();
+  };
+}
+// Initial auth check. If a signed-in account already has a town, enter
+// straight away (this is how a profile follows you to a new device).
+// Otherwise the guest join / ZIP setup flows above are shown.
+refreshAuth().then(({ signedIn: si, user }) => {
+  if (si && user && user.hasProfile && $('app').hidden) {
+    // Only auto-enter if the guest auto-join below did not already
+    // enter with a different scope; account scope wins on new devices
+    // where sessionStorage is empty.
+    if (!sessionStorage.getItem('nc-town')) enterWithAccount(user);
+    else { displayName = user.displayName; }
+  }
+  if (si && user && !user.hasProfile) {
+    const setup = $('accountSetup'); if (setup) setup.hidden = false;
+  }
+}).catch(() => {});
+
 // Auto-join if a full scope was already entered this session (ZIP +
 // county + town). Change town wipes that scope, so it cannot auto-join
 // into a new town without a fresh ZIP + GPS step.

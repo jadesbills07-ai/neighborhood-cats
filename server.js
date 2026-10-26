@@ -1,5 +1,7 @@
 /**
- * Neighborhood Cats — shared version (Maine, county then town)
+ * Where in the Whiskers? — shared version (Maine, county then town)
+ * Formerly called Neighborhood Cats. Repo and deployed URL are unchanged;
+ * only the display name changed.
  *
  * One server is the single source of truth. Cats, sightings and messages
  * are stored in data/db.json on the server, NOT in any visitor's browser.
@@ -34,10 +36,20 @@
  * not just the spotter. The server cannot push to a closed browser —
  * see README limits.
  *
+ * Accounts: Google sign-in ONLY — no passwords are stored at all.
+ * See GOOGLE_SETUP.md: real Google OAuth 2.0 (direct code flow, no
+ * extra npm dependencies) needs GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
+ * GOOGLE_CALLBACK_URL and SESSION_SECRET in the environment. Without
+ * them the app still runs, shows a clear "Google sign-in not set up
+ * yet" state, and guests can still browse a town read-only.
+ *
  * Run:  npm install && npm start
- * Env:  PORT (default 3000)
+ * Env:  PORT (default 3000), GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
+ *       GOOGLE_CALLBACK_URL (default https://neighborhood-cats.onrender.com/auth/google/callback),
+ *       SESSION_SECRET
  */
 const crypto = require('crypto');
+const { lookupZip } = require('./zipLookup');
 const COUNTIES = ['Androscoggin', 'Aroostook', 'Cumberland', 'Franklin', 'Hancock', 'Kennebec', 'Knox', 'Lincoln', 'Oxford', 'Penobscot', 'Piscataquis', 'Sagadahoc', 'Somerset', 'Waldo', 'Washington', 'York'];
 const DEFAULT_COUNTY = 'Androscoggin';
 const DEFAULT_TOWN = 'Lisbon Falls';
@@ -72,6 +84,10 @@ app.use((err, req, res, next) => {
   return next(err);
 });
 app.use(express.static(path.join(__dirname, 'public')));
+// Public Privacy Policy page — must serve at /privacy (not only
+// /privacy.html), because Google requires a privacy policy URL for
+// publishing the OAuth app. The file lives in public/privacy.html.
+app.get('/privacy', (req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy.html')));
 
 function seedCats() {
   // Example cats only — clearly marked, so neighbors can clear them.
@@ -85,7 +101,7 @@ function seedCats() {
     { name: 'Oreo', status: 'indoor', description: 'Black-and-white, very friendly but should not be outside.', collar: 'Red collar', homeArea: 'Near Village St area', owner: 'Casey (example)', photo: '🐈', lat: 44.0055, lng: -70.0575 },
   ];
   return base.map((c, i) => ({
-    id: `seed-${i + 1}`,
+    id: `seed-${i + 1}`, ownerId: '',
     county: DEFAULT_COUNTY, town: DEFAULT_TOWN, zip: DEFAULT_ZIP,
     ...c,
     spotted: !!c.spotted,
@@ -118,8 +134,80 @@ function saveDb(db) {
 }
 
 let db = loadDb();
+if (!Array.isArray(db.users)) db.users = [];
+if (!Array.isArray(db.sessions)) db.sessions = [];
 const nextId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const hashPin = (pin) => crypto.createHash('sha256').update(String(pin)).digest('hex');
+
+// ---- Google sign-in (direct OAuth 2.0 code flow, no passport) ----
+// Sessions are random tokens; only an HMAC/sha256 hash is stored in
+// db.json, never the token itself. SESSION_SECRET, when set, keys the
+// hash — changing it invalidates old sessions, which is the safe
+// behaviour. Without it, a plain sha256 hash is used and a warning is
+// logged; the app still works, sessions just do not survive a secret
+// change (there is none to change).
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
+const GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || 'https://neighborhood-cats.onrender.com/auth/google/callback';
+const SESSION_SECRET = process.env.SESSION_SECRET || '';
+const GOOGLE_CONFIGURED = !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
+if (!GOOGLE_CONFIGURED) console.log('Google sign-in NOT configured (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET missing) — app runs in guest-browse mode. See GOOGLE_SETUP.md.');
+if (!SESSION_SECRET) console.log('Warning: SESSION_SECRET not set — set it in production so sessions are keyed to a stable secret.');
+const hashToken = (token) => SESSION_SECRET
+  ? crypto.createHmac('sha256', SESSION_SECRET).update(String(token)).digest('hex')
+  : crypto.createHash('sha256').update(String(token)).digest('hex');
+const oauthStates = new Map(); // state -> createdAt (10 min expiry)
+function parseCookies(req) {
+  const out = {};
+  const raw = req.headers.cookie || '';
+  for (const part of raw.split(';')) {
+    const i = part.indexOf('=');
+    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+  }
+  return out;
+}
+function isHttpsReq(req) {
+  return req.secure || req.headers['x-forwarded-proto'] === 'https';
+}
+function setCookie(res, name, value, opts) {
+  const bits = [`${name}=${encodeURIComponent(value)}`, 'Path=/', 'SameSite=Lax'];
+  if (opts && opts.httpOnly) bits.push('HttpOnly');
+  if (opts && opts.secure) bits.push('Secure');
+  if (opts && opts.maxAge) bits.push(`Max-Age=${opts.maxAge}`);
+  if (opts && opts.expires) bits.push(`Expires=${opts.expires.toUTCString()}`);
+  res.append('Set-Cookie', bits.join('; '));
+}
+// Attach req.user (or null) from the session cookie. Never throws.
+function attachUser(req, res, next) {
+  req.user = null;
+  try {
+    const token = parseCookies(req).wiw_session;
+    if (!token) return next();
+    const hash = hashToken(token);
+    const sess = (db.sessions || []).find((s) => s.tokenHash === hash);
+    if (!sess) return next();
+    if (sess.expiresAt && new Date(sess.expiresAt).getTime() < Date.now()) return next();
+    req.user = (db.users || []).find((u) => u.id === sess.userId) || null;
+    if (!req.user) return next();
+    req.sessionHash = hash;
+  } catch (e) { /* guest */ }
+  return next();
+}
+function requireAuth(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: 'Please sign in with Google to do that.', needsAuth: true, googleConfigured: GOOGLE_CONFIGURED });
+  return next();
+}
+// Safe public view of the signed-in user: display name + town scope
+// only. NEVER googleId, email, or session material in any response.
+function publicUser(user) {
+  if (!user) return null;
+  return {
+    displayName: user.displayName || '',
+    zip: user.zip || '', county: user.county || '', town: user.town || '',
+    gpsConfirmed: !!user.gpsConfirmed,
+    hasProfile: !!(user.zip && user.county && user.town),
+  };
+}
 
 // Public view of a cat: NEVER includes pinHash or the full emergency
 // details. In emergency mode only the fields the owner actually filled
@@ -137,6 +225,7 @@ function publicCat(cat) {
   }
   const out = { ...c };
   delete out.pinHash;
+  delete out.ownerId;
   delete out.emergency;
   out.hasPin = !!c.pinHash;
   out.emergencyOn = !!c.emergencyOn;
@@ -169,7 +258,129 @@ function filterByScope(cats, scope) {
   });
 }
 
-app.get('/api/health', (req, res) => res.json({ ok: true, cats: db.cats.length }));
+app.use(attachUser);
+
+// ---- Auth routes ----
+// /api/auth/status never crashes without credentials: it simply
+// reports configured:false, and the frontend shows the not-set-up
+// state while guests can still browse a town read-only.
+app.get('/api/auth/status', (req, res) => res.json({
+  googleConfigured: GOOGLE_CONFIGURED,
+  signedIn: !!req.user,
+  user: publicUser(req.user),
+}));
+app.get('/api/zip-lookup', (req, res) => {
+  const zip = String(req.query.zip || '').trim();
+  if (!isMaineZip(zip)) return res.status(400).json({ error: 'Please enter a valid 5-digit Maine ZIP code.' });
+  const hit = lookupZip(zip);
+  if (!hit) return res.json({ zip, found: false });
+  return res.json({ zip, found: true, town: hit.town, county: hit.county });
+});
+app.get('/auth/google', (req, res) => {
+  if (!GOOGLE_CONFIGURED) return res.redirect('/?auth=not-configured');
+  const state = crypto.randomBytes(16).toString('hex');
+  oauthStates.set(state, Date.now());
+  setCookie(res, 'wiw_oauth_state', state, { httpOnly: true, secure: isHttpsReq(req), maxAge: 600 });
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID, redirect_uri: GOOGLE_CALLBACK_URL,
+    response_type: 'code', scope: 'openid email profile', state,
+    access_type: 'online', prompt: 'select_account',
+  });
+  res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+});
+app.get('/auth/google/callback', async (req, res) => {
+  try {
+    if (!GOOGLE_CONFIGURED) return res.redirect('/?auth=not-configured');
+    const { code, state, error } = req.query;
+    if (error) return res.redirect('/?auth=denied');
+    const savedState = parseCookies(req).wiw_oauth_state;
+    const created = oauthStates.get(String(state || ''));
+    oauthStates.delete(String(state || ''));
+    if (!code || !state || savedState !== state || !created || Date.now() - created > 10 * 60 * 1000) {
+      return res.redirect('/?auth=bad-state');
+    }
+    // Exchange code for tokens (server-to-server, secret never in browser).
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code: String(code), client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET,
+        redirect_uri: GOOGLE_CALLBACK_URL, grant_type: 'authorization_code',
+      }),
+    });
+    const tokens = await tokenRes.json().catch(() => ({}));
+    if (!tokenRes.ok || !tokens.access_token) return res.redirect('/?auth=token-failed');
+    const meRes = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    const profile = await meRes.json().catch(() => ({}));
+    if (!meRes.ok || !profile.sub) return res.redirect('/?auth=profile-failed');
+    let user = db.users.find((u) => u.googleId === profile.sub);
+    if (!user) {
+      user = {
+        id: nextId(), googleId: profile.sub,
+        displayName: String(profile.name || profile.email || 'Neighbor').trim(),
+        zip: '', county: '', town: '', gpsConfirmed: false,
+        createdAt: new Date().toISOString(),
+      };
+      db.users.push(user);
+    }
+    const token = crypto.randomBytes(32).toString('hex');
+    db.sessions.push({ tokenHash: hashToken(token), userId: user.id, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString() });
+    saveDb(db);
+    setCookie(res, 'wiw_session', token, { httpOnly: true, secure: isHttpsReq(req), maxAge: 30 * 24 * 3600 });
+    setCookie(res, 'wiw_oauth_state', '', { httpOnly: true, expires: new Date(0) });
+    return res.redirect('/?auth=signed-in');
+  } catch (e) {
+    console.error('Google callback failed:', e.message);
+    return res.redirect('/?auth=failed');
+  }
+});
+function clearSession(req, res) {
+  if (req.sessionHash) db.sessions = (db.sessions || []).filter((s) => s.tokenHash !== req.sessionHash);
+  saveDb(db);
+  setCookie(res, 'wiw_session', '', { httpOnly: true, expires: new Date(0) });
+}
+app.get('/auth/logout', (req, res) => { clearSession(req, res); res.redirect('/'); });
+app.post('/api/auth/logout', (req, res) => { clearSession(req, res); res.json({ ok: true }); });
+app.get('/api/me', (req, res) => res.json({ signedIn: !!req.user, user: publicUser(req.user), googleConfigured: GOOGLE_CONFIGURED }));
+app.get('/api/me/cats', requireAuth, (req, res) => {
+  const mine = db.cats.filter((c) => c.ownerId === req.user.id);
+  res.json(publicCats(mine));
+});
+// Zip-only signup: enter ONLY a ZIP + GPS confirmation. County/town
+// are auto-filled from the ZIP lookup; if the ZIP is not in the table,
+// county + town must be supplied manually (fallback, never guessed).
+// Changing town uses this same endpoint: a new ZIP + GPS step.
+function applyZipSetup(user, body) {
+  const zip = String(body.zip || '').trim();
+  if (!isMaineZip(zip)) return { error: 'Please enter a valid 5-digit Maine ZIP code.' };
+  const hit = lookupZip(zip);
+  let county = normalizeCounty(body.county);
+  let town = String(body.town || '').trim();
+  if (hit) {
+    county = hit.county; town = hit.town;
+  } else {
+    if (!county || !town) return { error: 'That ZIP is not in the town lookup yet — please pick your county and town to confirm it.', needsManual: true };
+  }
+  user.zip = zip; user.county = county; user.town = town;
+  user.gpsConfirmed = !!body.gpsConfirmed;
+  return { user: publicUser(user) };
+}
+app.post('/api/me/setup', requireAuth, (req, res) => {
+  const result = applyZipSetup(req.user, req.body || {});
+  if (result.error) return res.status(400).json(result);
+  saveDb(db);
+  res.json(result.user);
+});
+app.post('/api/me/scope', requireAuth, (req, res) => {
+  const result = applyZipSetup(req.user, req.body || {});
+  if (result.error) return res.status(400).json(result);
+  saveDb(db);
+  res.json(result.user);
+});
+
+app.get('/api/health', (req, res) => res.json({ ok: true, cats: db.cats.length, googleConfigured: GOOGLE_CONFIGURED }));
 
 app.get('/api/counties', (req, res) => res.json(COUNTIES));
 
@@ -209,12 +420,15 @@ app.get('/api/alerts', requireScope, (req, res) => {
   res.json(all);
 });
 
-app.post('/api/cats', (req, res) => {
+app.post('/api/cats', requireAuth, (req, res) => {
   const { name, description, collar, homeArea, owner, status, photo, photoUrl, photoData, lat, lng, county, town, zip,
     emergencyAddress, emergencyContact, emergencyVet, emergencyMedical, emergencyNotes, showAddressAlways, ownerPin } = req.body || {};
   if (!name || !name.trim()) return res.status(400).json({ error: 'Cat name is required.' });
   if (!['outdoor', 'indoor'].includes(status)) return res.status(400).json({ error: 'Status must be outdoor or indoor.' });
-  if (!owner || !owner.trim()) return res.status(400).json({ error: 'Owner display name is required.' });
+  // The signed-in account owns the cat: display name comes from the
+  // account, so one user cannot post as another. Guests cannot add.
+  const ownerName = (req.user.displayName || '').trim() || (owner || '').trim();
+  if (!ownerName) return res.status(400).json({ error: 'Owner display name is required.' });
   if (county && !normalizeCounty(county)) return res.status(400).json({ error: 'Please pick a Maine county from the list.' });
   if (zip && !isMaineZip(zip)) return res.status(400).json({ error: 'Please enter a valid 5-digit Maine ZIP code.' });
   const catCounty = normalizeCounty(county) || DEFAULT_COUNTY;
@@ -240,10 +454,10 @@ app.post('/api/cats', (req, res) => {
     cleanPhotoData = photoData;
   }
   const cat = {
-    id: nextId(), name: name.trim(), description: (description || '').trim(),
+    id: nextId(), ownerId: req.user.id, name: name.trim(), description: (description || '').trim(),
     collar: (collar || '').trim(), homeArea: (homeArea || '').trim(),
     county: catCounty, town: catTown, zip: catZip,
-    owner: owner.trim(), status, photo: photo || '🐈', photoUrl: (photoUrl || '').trim(),
+    owner: ownerName, status, photo: photo || '🐈', photoUrl: (photoUrl || '').trim(),
     photoData: cleanPhotoData,
     lat: Number(lat) || 44.003, lng: Number(lng) || -70.06,
     spotted: false, isExample: false, createdAt: new Date().toISOString(),
@@ -262,10 +476,11 @@ app.post('/api/cats', (req, res) => {
   res.status(201).json(publicCat(cat));
 });
 
-app.post('/api/cats/:id/sightings', (req, res) => {
+app.post('/api/cats/:id/sightings', requireAuth, (req, res) => {
   const cat = db.cats.find((c) => c.id === req.params.id);
   if (!cat) return res.status(404).json({ error: 'Cat not found.' });
-  const { location, note, reporter, lat, lng } = req.body || {};
+  const { location, note, lat, lng } = req.body || {};
+  const reporter = req.user.displayName || 'Neighbor';
   let sightLat = null, sightLng = null;
   if (lat !== undefined && lat !== null && lat !== '') {
     sightLat = Number(lat); sightLng = Number(lng);
@@ -292,12 +507,12 @@ app.post('/api/cats/:id/sightings', (req, res) => {
   res.status(201).json(sighting);
 });
 
-app.post('/api/cats/:id/messages', (req, res) => {
+app.post('/api/cats/:id/messages', requireAuth, (req, res) => {
   const cat = db.cats.find((c) => c.id === req.params.id);
   if (!cat) return res.status(404).json({ error: 'Cat not found.' });
-  const { author, text } = req.body || {};
+  const { text } = req.body || {};
   if (!text || !text.trim()) return res.status(400).json({ error: 'Message text is required.' });
-  const msg = { id: nextId(), author: (author || 'Neighbor').trim(), text: text.trim(), createdAt: new Date().toISOString() };
+  const msg = { id: nextId(), author: (req.user.displayName || 'Neighbor').trim(), text: text.trim(), createdAt: new Date().toISOString() };
   cat.messages.unshift(msg);
   saveDb(db);
   res.status(201).json(msg);
@@ -305,9 +520,14 @@ app.post('/api/cats/:id/messages', (req, res) => {
 
 // Emergency toggle. If the owner set a PIN, it is required BOTH to turn
 // emergency ON and to turn it OFF, and it is checked only as a hash.
-app.post('/api/cats/:id/emergency', (req, res) => {
+app.post('/api/cats/:id/emergency', requireAuth, (req, res) => {
   const cat = db.cats.find((c) => c.id === req.params.id);
   if (!cat) return res.status(404).json({ error: 'Cat not found.' });
+  // Ownership is now primary: a cat with an ownerId can only be put
+  // in Emergency Mode by that signed-in owner. Legacy cats with no
+  // ownerId fall back to the PIN check below. PIN remains an extra
+  // check where one was set.
+  if (cat.ownerId && cat.ownerId !== req.user.id) return res.status(403).json({ error: 'Only the cat\'s owner can change Emergency Mode for this cat.' });
   const on = req.body?.emergency;
   if (typeof on !== 'boolean') return res.status(400).json({ error: 'Send { "emergency": true } or { "emergency": false }.' });
   if (cat.pinHash) {
@@ -320,7 +540,7 @@ app.post('/api/cats/:id/emergency', (req, res) => {
 });
 
 // Clear only the seed example cats (keeps real cats neighbors added).
-app.post('/api/clear-examples', (req, res) => {
+app.post('/api/clear-examples', requireAuth, (req, res) => {
   const before = db.cats.length;
   db.cats = db.cats.filter((c) => !c.isExample);
   saveDb(db);
@@ -328,6 +548,6 @@ app.post('/api/clear-examples', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Neighborhood Cats (shared) running on http://localhost:${PORT}`);
+  console.log(`Where in the Whiskers? (shared) running on http://localhost:${PORT}`);
   console.log(`Neighborhood: Maine, ZIP + county + town locked to your own town. No neighborhood code.`);
 });

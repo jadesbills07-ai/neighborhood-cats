@@ -3,22 +3,48 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Neighborhood Cats — Maine</title>
+<title>Where in the Whiskers? — Maine</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="style.css">
-<meta name="theme-color" content="#0f2a22">
+<meta name="theme-color" content="#145c3f">
 </head>
 <body>
 <header>
-  <h1>🐾 Neighborhood Cats</h1>
-  <p>Maine — one app, locked to your own town. You only see cats for your ZIP / county / town.</p>
-  <p id="scopeLabel" class="small"></p>
+  <h1>🐾 Where in the Whiskers<span class="whiskers">?</span></h1>
+  <p class="tagline">Maine — one app, locked to your own town. You only see cats for your ZIP / county / town.</p>
+  <p class="paw-row" aria-hidden="true">🐾 🐾 🐾</p>
+  <div class="whisker-divider" aria-hidden="true"></div>
+  <p id="scopeLabel" class="small" style="color:#e8f5ec"></p>
   <p class="counts" id="counts">Loading…</p>
 </header>
 
 <section id="join" class="card">
   <h2>Join your town</h2>
-  <p>Enter a display name and your 5-digit Maine ZIP code, then pick your county and town. There is no neighborhood code any more — the old <code>lisbon-cats</code> code is no longer used. You are locked to your own town only: there is no View All Maine and no browsing other towns. No phone number or email is shown to anyone.</p>
+  <div id="authBox" class="card" style="margin:0 0 16px">
+    <h3 style="margin-top:0">🔑 Sign in with Google</h3>
+    <p id="authStatus" class="small">Checking sign-in…</p>
+    <p><a href="/auth/google" id="googleSignInBtn"><button type="button">Sign in with Google</button></a>
+    <button type="button" id="googleSignOutBtn" hidden>Sign out</button></p>
+    <p class="small">Signing in creates your account, so your profile and your cats follow you to any phone or browser — sign out here, sign in somewhere else, and they are right there. No password is stored: Google handles sign-in. You are locked to your own town only, even when signed in. See our <a href="/privacy">Privacy Policy</a>.</p>
+    <div id="accountSetup" hidden>
+      <h4>Finish setting up your account — ZIP only</h4>
+      <p class="small">Enter ONLY your 5-digit Maine ZIP code, then tap GPS confirmation. Your county and town are filled in automatically — you do not need to pick them.</p>
+      <label>Your Maine ZIP code <input id="setupZip" inputmode="numeric" maxlength="5" placeholder="e.g. 04252"></label>
+      <p><button type="button" id="setupGpsBtn">📍 Confirm my location</button></p>
+      <p id="setupGpsStatus" class="small">Not confirmed yet. GPS confirmation improves accuracy; if it is denied you can still continue with your ZIP only, marked unverified. GPS coordinates are never stored as your home location.</p>
+      <p><button type="button" id="setupCheckBtn">Check my town</button></p>
+      <p id="setupPreview" class="paw-note" hidden></p>
+      <div id="setupManual" hidden>
+        <p class="small">That ZIP is not in the town lookup yet — please pick your county and town to confirm it. Nothing is guessed.</p>
+        <label>County <select id="setupCounty"><option value="">Pick a county…</option><option>Androscoggin</option><option>Aroostook</option><option>Cumberland</option><option>Franklin</option><option>Hancock</option><option>Kennebec</option><option>Knox</option><option>Lincoln</option><option>Oxford</option><option>Penobscot</option><option>Piscataquis</option><option>Sagadahoc</option><option>Somerset</option><option>Waldo</option><option>Washington</option><option>York</option></select></label>
+        <label>Town <input id="setupTown" placeholder="e.g. Lisbon Falls"></label>
+      </div>
+      <p><button type="button" id="setupSaveBtn" hidden>Yes, that's my town — save &amp; enter</button></p>
+      <p id="setupError" class="error" role="alert"></p>
+    </div>
+  </div>
+  <h3>Or browse as a guest (view only)</h3>
+  <p>Guests can view cats for a town, but adding cats, messaging, sighting reports, and Emergency Mode require a signed-in Google account. Enter a display name and your 5-digit Maine ZIP code, then pick your county and town. There is no neighborhood code any more — the old <code>lisbon-cats</code> code is no longer used. You are locked to your own town only: there is no View All Maine and no browsing other towns. No phone number or email is shown to anyone.</p>
   <label>Display name <input id="displayName" placeholder="e.g. Jade"></label>
   <label>Maine ZIP code <input id="joinZip" inputmode="numeric" maxlength="5" placeholder="e.g. 04252"></label>
   <p><button type="button" id="joinGpsBtn">📍 Confirm my location</button></p>
@@ -45,13 +71,30 @@
   <div id="emergencyBanner" class="alert" hidden></div>
   <div id="alertBanner" class="alert" hidden></div>
   <p><button type="button" id="changeScopeBtn">Change town (re-enter ZIP + GPS)</button></p>
-  <p class="card" style="margin:16px">
-    <label><input type="checkbox" id="loudToggle" checked> 🔊 Loud alerts for my cats</label>
-    <button type="button" onclick="testAlertSound()">🔊 Test alert sound</button>
-    <button type="button" onclick="enableNotifications()">🔔 Enable browser notifications</button>
-    <span id="alertSettingsNote" class="small">When an Indoor Only cat is spotted in your town, you get a flashing banner that stays until dismissed, plus (if loud alerts are on) an alert sound, phone vibration on Android, and a browser notification if you allowed notifications. Honest limit: a web app cannot override silent / Do Not Disturb, and cannot reliably wake a fully closed browser without a native app and push service.</span>
-  </p>
 
+  <!-- 3 main tabs, in order: 1 Local Alerts, 2 Map, 3 My Profile.
+       Tab order is fixed here; the active tab is switched in app.js
+       (switchMainTab), so the order can be changed later by moving
+       these buttons and panels together, without changing the code. -->
+  <nav class="main-tabs" role="tablist" aria-label="Main sections">
+    <button type="button" class="main-tab-btn active" data-main-tab="alerts" aria-selected="true">🚨 Local Alerts</button>
+    <button type="button" class="main-tab-btn" data-main-tab="map" aria-selected="false">🗺️ Map</button>
+    <button type="button" class="main-tab-btn" data-main-tab="profile" aria-selected="false">🐱 My Profile</button>
+  </nav>
+
+  <section id="tab-alerts" class="tab-panel" data-panel="alerts">
+    <h2 class="cute-h">🚨 Local Alerts — your town only</h2>
+    <p class="paw-note">🐾 Newest first, with Lost / Emergency cats at the very top. This feed is only for the town you joined — you cannot browse other towns' alerts. Tap “View on map” to jump to that cat and its GPS sighting pin.</p>
+    <p class="card" style="margin:16px">
+      <label><input type="checkbox" id="loudToggle" checked> 🔊 Loud alerts for my cats</label>
+      <button type="button" onclick="testAlertSound()">🔊 Test alert sound</button>
+      <button type="button" onclick="enableNotifications()">🔔 Enable browser notifications</button>
+      <span id="alertSettingsNote" class="small">When an Indoor Only cat is spotted in your town, you get a flashing banner that stays until dismissed, plus (if loud alerts are on) an alert sound, phone vibration on Android, and a browser notification if you allowed notifications. Honest limit: a web app cannot override silent / Do Not Disturb, and cannot reliably wake a fully closed browser without a native app and push service.</span>
+    </p>
+    <div id="alertList"></div>
+  </section>
+
+  <section id="tab-map" class="tab-panel" data-panel="map" hidden>
   <div class="tabs" role="tablist">
     <button data-filter="all" class="active">All cats</button>
     <button data-filter="outdoor">✅ Outdoor OK</button>
@@ -70,7 +113,8 @@
   <h2>Recent sightings</h2>
   <div id="sightingFeed"></div>
 
-  <h2>Add your cat</h2>
+  <h2 class="cute-h">🐾 Add your cat</h2>
+  <p class="small">You can add as many cats as you have — just fill this in again for each cat, or use “Add another cat” on My Profile.</p>
   <form id="addCat" class="card">
     <p class="warning">⚠️ Home area: street or nearest corner ONLY. Do <strong>not</strong> enter your house number.</p>
     <label>Cat name * <input name="name" required placeholder="e.g. Whiskers"></label>
@@ -119,7 +163,40 @@
 
   <button id="clearExamples" class="quiet">Clear example cats (keeps cats neighbors added)</button>
   <p class="small">Display names only. Never post a phone number, email, or house number here.</p>
+  </section>
+
+  <section id="tab-profile" class="tab-panel" data-panel="profile" hidden>
+    <h2 class="cute-h">🐱 My Profile</h2>
+    <div class="card" style="margin:0 0 16px">
+      <h3 style="margin-top:0">🔑 Your account</h3>
+      <p id="profileAuthStatus" class="small">Checking sign-in…</p>
+      <p><a href="/auth/google" id="profileGoogleSignInBtn"><button type="button">Sign in with Google</button></a>
+      <button type="button" id="profileGoogleSignOutBtn" hidden>Sign out</button></p>
+      <p class="small">Signed-in account: your profile and your cats follow you to any phone or browser. Sign out here and sign in somewhere else to pick up where you left off. Guests can browse, but cannot add cats, message, report sightings, or use Emergency Mode. See our <a href="/privacy">Privacy Policy</a>.</p>
+    </div>
+    <p class="paw-note">🐾 With a Google account, this profile lives on the server, not just this browser. Guest profile details below are still device-only — sign in to make your profile travel with you.</p>
+    <form id="profileForm" class="card">
+      <p><strong>Your joined town</strong></p>
+      <p id="profileScope" class="small"></p>
+      <p id="profileGps" class="small"></p>
+      <label>Display name <input id="profileName" placeholder="e.g. Jade"></label>
+      <label>Optional contact for emergency use (kept on this device only — it is NOT shown publicly) <input id="profileContact" placeholder="e.g. Best way to reach me fast — only for your own notes"></label>
+      <p class="small">Want that contact to actually reach a finder? Put it in the Emergency Details on each cat — that is what shows in Lost / Emergency Mode, under the rules there. This profile box alone never publishes it.</p>
+      <label>Optional notes about you / your cats <input id="profileNotes" placeholder="e.g. My cats are shy — please do not chase"></label>
+      <button type="submit">Save my profile</button>
+      <p id="profileSaved" class="small"></p>
+      <p><button type="button" id="profileChangeScopeBtn">Change town (re-enter ZIP + GPS)</button></p>
+    </form>
+
+    <h2 class="cute-h">🐾 My Cats — add as many as you like</h2>
+    <p>Each cat you add is shared with your town. Use “Add another cat” as many times as you need — there is no limit of one cat per person.</p>
+    <p><button type="button" id="addAnotherCatBtn">🐾 Add another cat</button></p>
+    <div id="myCatList"></div>
+    <p><button type="button" id="addAnotherCatBtn2">🐾 Add another cat</button></p>
+  </section>
 </main>
+
+<footer>🐾 Where in the Whiskers? — Maine · One app, locked to your own town · Pins are approximate by design, except exact sighting pins. · <a href="/privacy">Privacy Policy</a></footer>
 
 <div id="modal" hidden>
   <div class="modal-box">
