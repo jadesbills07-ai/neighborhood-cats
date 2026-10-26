@@ -238,12 +238,74 @@ phone-app build.
    There is no neighborhood-code environment variable to set any more.
 
 Notes for a non-developer: the free tier may sleep when nobody uses it,
-so the first open after a quiet period can take 30–60 seconds. Data lives
-in `data/db.json` on that server. On a free tier that restarts, that file
-can occasionally reset — for a small neighborhood trial this is fine, but
-for a permanent, long-term app, a paid database (or a host with a
-persistent disk) is the next upgrade. Back up `data/db.json` if the cats
-matter to you.
+so the first open after a quiet period can take 30–60 seconds.
+
+## Persistent storage — REQUIRED on Render (do not skip this)
+
+**Why this exists.** Accounts, cats, sightings, messages and sessions
+used to live only in `data/db.json` on Render's free server. That file
+is wiped on every Render restart, spin-down and redeploy — proven on
+2026-10-26, when seed cats were re-created at 01:35 EDT and a
+signed-in user got a 401 when adding a cat, because her session had
+been wiped. A file-only app on Render free tier will keep losing
+collected info. That is not acceptable for a real neighbourhood app,
+so the server now supports PostgreSQL.
+
+**How it works.** Set one env var, `DATABASE_URL`, to a Postgres
+connection string (see below). On startup the server creates the
+table automatically if it does not exist:
+
+```sql
+CREATE TABLE app_state (
+  id TEXT PRIMARY KEY,
+  data JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+and stores the entire app state — cats, users, sessions, everything —
+as a single row with `id = 'main'`. The existing JSON data model is
+unchanged; only where it is stored changes. Every save upserts that
+row (serial write queue, last-write-wins, errors logged, never
+crashing the server). Once `DATABASE_URL` is set, Render restarts,
+spin-downs and redeploys no longer wipe data, because the data lives
+in Postgres, not in Render's ephemeral filesystem. The file is no
+longer the source of truth in that mode.
+
+**How to set it up (free, no card).**
+1. Create a free Postgres project — **Supabase** (free tier, sign in
+   with Google, no card for the free project) or **Neon** (free tier)
+   are both suitable. Create a new project / database for this app.
+2. Copy its connection string. In Supabase this is the Postgres
+   connection string (pooler / transaction mode works); in Neon it is
+   the connection string shown for the database. It must include
+   `sslmode=require` (Supabase / Neon strings normally do). Example
+   shape only — never paste a real password into chat or git:
+   `postgresql://user:password@host:5432/postgres?sslmode=require`
+3. In Render, open the `neighborhood-cats` web service → Environment
+   → Add Environment Variable: key `DATABASE_URL`, value the string
+   from step 2 → Save. Render redeploys automatically.
+4. After that deploy, check the deploy logs for
+   "Loaded persistent state from Postgres" (on later restarts) or
+   "No Postgres state row yet — saved current state … to Postgres"
+   (on the very first Postgres deploy). From then on, accounts and
+   cats survive restarts.
+
+**If DATABASE_URL is not set**, the server falls back to
+`data/db.json` exactly as before, so local testing still works
+without a database — but that fallback is NOT safe on Render, and
+the server logs a warning saying so on every startup. Do not invite
+real neighbours until `DATABASE_URL` is set in Render.
+
+**One-time migration note — read this before switching.** Cats and
+accounts created before the switch will NOT magically appear in
+Postgres, because Render already wiped them (that is the bug being
+fixed). The first Postgres-backed sign-in will be fresh: neighbours
+sign in with Google again, complete the ZIP-only setup, and add
+their cats again — and after that, restarts will no longer wipe
+them. There is nothing to migrate from the old file, because the
+old file is gone on every Render restart; do not promise neighbours
+that pre-switch data will reappear.
 
 ## 3. How neighbors join once deployed
 

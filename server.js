@@ -43,10 +43,37 @@
  * them the app still runs, shows a clear "Google sign-in not set up
  * yet" state, and guests can still browse a town read-only.
  *
+ * PERSISTENT STORAGE — READ THIS BEFORE CHANGING saveDb/loadDb:
+ * Accounts, cats, sightings, messages and sessions MUST survive Render
+ * restarts, spin-downs and redeploys. They did NOT survive on the old
+ * setup: everything lived in data/db.json on Render's free ephemeral
+ * filesystem, which is wiped on every restart (proven 2026-10-26:
+ * seed cats were re-created at 01:35 EDT, wiping prior users/sessions,
+ * so a signed-in user got a 401 "Please sign in with Google to do
+ * that." when adding a cat). The fix is PostgreSQL, configured with
+ * a single DATABASE_URL env var (Supabase / Neon free Postgres style):
+ * - If DATABASE_URL is set, the whole db object (cats, users,
+ *   sessions, ...) is stored as ONE row (id='main') in table
+ *   app_state(data JSONB, updated_at TIMESTAMPTZ), created
+ *   automatically on startup. The file is NO LONGER the source of
+ *   truth, and restarts no longer wipe data.
+ * - If DATABASE_URL is NOT set, the server falls back to the old
+ *   data/db.json file behaviour exactly as before, so local testing
+ *   still works without a database. That fallback is NOT safe on
+ *   Render free tier — set DATABASE_URL in Render env vars (see
+ *   README "Persistent storage" section) before inviting neighbours.
+ * - saveDb() is still called synchronously by all routes. When
+ *   Postgres is ready it enqueues a full-state upsert (serial queue,
+ *   last-write-wins, errors logged, never crashing the server);
+ *   otherwise it writes the file as before. A SIGTERM/SIGINT handler
+ *   drains the queue before exit so a redeploy does not lose the
+ *   last queued write.
+ *
  * Run:  npm install && npm start
  * Env:  PORT (default 3000), GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
  *       GOOGLE_CALLBACK_URL (default https://neighborhood-cats.onrender.com/auth/google/callback),
- *       SESSION_SECRET
+ *       SESSION_SECRET, DATABASE_URL (optional locally, REQUIRED on Render
+ *       for data to survive restarts — see README "Persistent storage")
  */
 const crypto = require('crypto');
 const { lookupZip } = require('./zipLookup');
@@ -123,6 +150,65 @@ function seedCats() {
   }));
 }
 
+// ---- Persistent store: Postgres (DATABASE_URL) with file fallback ----
+// The pool is created here, but pgReady only becomes true after the
+// async init at the bottom of this file (create table + load) succeeds.
+// Until then saveDb() writes the file as before, which is safe because
+// the server does not listen for requests until init has finished.
+const DATABASE_URL = process.env.DATABASE_URL || '';
+let pgPool = null;
+let pgReady = false;
+let pgFailed = false;
+function pgSslOptions(urlStr) {
+  try {
+    const u = new URL(urlStr);
+    const mode = (u.searchParams.get('sslmode') || '').toLowerCase();
+    if (mode === 'disable') return false;
+    if (mode === 'verify-full') return { rejectUnauthorized: true };
+    if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') return false;
+    // Supabase / Neon style: sslmode=require (or no sslmode on a remote
+    // host). Hosted poolers use shared certificates, so verification is
+    // relaxed — the connection is still TLS-encrypted. This is the
+    // standard pg setup for those providers, not a plaintext fallback.
+    return { rejectUnauthorized: false };
+  } catch (e) { return false; }
+}
+if (DATABASE_URL) {
+  try {
+    const { Pool } = require('pg');
+    pgPool = new Pool({
+      connectionString: DATABASE_URL,
+      ssl: pgSslOptions(DATABASE_URL),
+      max: 2,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
+    });
+    pgPool.on('error', (err) => console.error('Postgres pool error (server keeps running on in-memory state):', err.message));
+  } catch (e) {
+    console.error('Postgres driver (pg) could not be loaded, falling back to file storage:', e.message);
+    pgPool = null;
+    pgFailed = true;
+  }
+}
+// Serial write queue: every save enqueues a FULL snapshot taken at
+// save time (JSON string, so later mutations cannot corrupt it).
+// Writes run in order, so the last snapshot always wins.
+let pgWriteQueue = Promise.resolve();
+function queuePgSave(snapshotJson) {
+  if (!pgPool) return;
+  pgWriteQueue = pgWriteQueue.then(async () => {
+    await pgPool.query(
+      `INSERT INTO app_state (id, data, updated_at) VALUES ('main', $1::jsonb, NOW())
+       ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+      [snapshotJson]
+    );
+  }).catch((err) => {
+    // Never crash the server on a DB write error, and never fail
+    // silently: log it, and keep serving from in-memory state.
+    console.error('Failed to save state to Postgres (in-memory state kept, next save will retry):', err.message);
+  });
+}
+
 function loadDb() {
   try {
     if (fs.existsSync(DB_PATH)) {
@@ -136,8 +222,55 @@ function loadDb() {
 }
 
 function saveDb(db) {
+  if (pgPool && pgReady) {
+    // Postgres is the source of truth: upsert the whole state.
+    // The file is deliberately NOT written in this mode, so there is
+    // no stale file that could be mistaken for the source of truth.
+    queuePgSave(JSON.stringify(db));
+    return;
+  }
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
   fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+}
+
+async function initPersistentStore() {
+  if (!pgPool) {
+    if (DATABASE_URL) console.error('Postgres not initialised; using file storage. Set a valid DATABASE_URL in Render to stop restarts wiping data.');
+    else console.log('DATABASE_URL not set — using file storage (data/db.json). This does NOT survive Render restarts; set DATABASE_URL in Render (see README "Persistent storage").');
+    return;
+  }
+  try {
+    await pgPool.query(`CREATE TABLE IF NOT EXISTS app_state (
+      id TEXT PRIMARY KEY,
+      data JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`);
+    const res = await pgPool.query(`SELECT data FROM app_state WHERE id = 'main'`);
+    if (res.rows.length && res.rows[0].data && Array.isArray(res.rows[0].data.cats)) {
+      const incoming = res.rows[0].data;
+      // Replace the in-memory state in place, so all routes (which
+      // close over the `db` variable) see the Postgres state.
+      for (const key of Object.keys(db)) delete db[key];
+      Object.assign(db, incoming);
+      db.cats = db.cats.map(withLocationDefaults);
+      if (!Array.isArray(db.users)) db.users = [];
+      if (!Array.isArray(db.sessions)) db.sessions = [];
+      console.log(`Loaded persistent state from Postgres: ${db.cats.length} cats, ${db.users.length} users.`);
+    } else {
+      // No row yet (first run with Postgres): persist the current
+      // file/seed state, so the first Postgres state is not empty.
+      await pgPool.query(
+        `INSERT INTO app_state (id, data, updated_at) VALUES ('main', $1::jsonb, NOW())
+         ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+        [JSON.stringify(db)]
+      );
+      console.log(`No Postgres state row yet — saved current state (${db.cats.length} cats) to Postgres.`);
+    }
+    pgReady = true;
+  } catch (e) {
+    pgFailed = true;
+    console.error('Postgres unavailable at startup, falling back to file storage (data WILL be at risk on Render restarts until DATABASE_URL is fixed):', e.message);
+  }
 }
 
 let db = loadDb();
@@ -598,7 +731,37 @@ app.post('/api/clear-examples', requireAuth, (req, res) => {
   res.json({ removed: before - db.cats.length, remaining: db.cats.length });
 });
 
-app.listen(PORT, () => {
-  console.log(`Where in the Whiskers? (shared) running on http://localhost:${PORT}`);
-  console.log(`Neighborhood: Maine, ZIP + county + town locked to your own town. No neighborhood code.`);
+function startServer() {
+  app.listen(PORT, () => {
+    console.log(`Where in the Whiskers? (shared) running on http://localhost:${PORT}`);
+    console.log(`Neighborhood: Maine, ZIP + county + town locked to your own town. No neighborhood code.`);
+    console.log(`Persistent store: ${pgPool && pgReady ? 'Postgres (DATABASE_URL) — restarts will NOT wipe data' : 'file (data/db.json) — restarts on Render WILL wipe data; set DATABASE_URL'}`);
+  });
+}
+// Do not listen until the persistent store has been initialised, so no
+// request can be served (and no save can happen) before Postgres state
+// — or the file fallback — is loaded. A Postgres failure does not stop
+// the server: it logs and falls back to the file, as above.
+initPersistentStore().then(startServer).catch((e) => {
+  console.error('Persistent store init failed, starting with file state:', e.message);
+  pgFailed = true;
+  startServer();
 });
+
+// Graceful shutdown: on Render redeploy / restart (SIGTERM), drain the
+// queued Postgres writes before exiting, so the last save is not lost
+// in the gap between a response and the queued write. Times out after
+// 5 seconds so a hung database cannot block a deploy forever.
+let shuttingDown = false;
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`Received ${signal} — draining pending Postgres writes before exit...`);
+  const timeout = new Promise((resolve) => setTimeout(resolve, 5000));
+  Promise.race([pgWriteQueue, timeout]).then(async () => {
+    try { if (pgPool) await pgPool.end(); } catch (e) { /* ignore */ }
+    process.exit(0);
+  });
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
