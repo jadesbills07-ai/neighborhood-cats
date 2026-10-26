@@ -176,8 +176,19 @@ function pgSslOptions(urlStr) {
 if (DATABASE_URL) {
   try {
     const { Pool } = require('pg');
+    // Do NOT pass connectionString + ssl together: pg's connection-string
+    // parser runs AFTER explicit options and overwrites ssl with {} for
+    // sslmode=require, which re-enables certificate verification and fails
+    // on Supabase poolers with "self-signed certificate in certificate
+    // chain" (seen live 2026-10-26 09:45 EDT). Parse the URL ourselves
+    // and pass host/user/password/port/database + explicit ssl instead.
+    const dbUrl = new URL(DATABASE_URL);
     pgPool = new Pool({
-      connectionString: DATABASE_URL,
+      host: dbUrl.hostname,
+      port: dbUrl.port ? Number(dbUrl.port) : 5432,
+      user: decodeURIComponent(dbUrl.username),
+      password: decodeURIComponent(dbUrl.password),
+      database: decodeURIComponent(dbUrl.pathname.replace(/^\//, '') || 'postgres'),
       ssl: pgSslOptions(DATABASE_URL),
       max: 2,
       idleTimeoutMillis: 30000,
