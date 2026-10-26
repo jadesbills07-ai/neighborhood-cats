@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Neighborhood Cats — Lisbon Falls</title>
+<title>Neighborhood Cats — Maine</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="style.css">
 <meta name="theme-color" content="#0f2a22">
@@ -11,22 +11,46 @@
 <body>
 <header>
   <h1>🐾 Neighborhood Cats</h1>
-  <p>Lisbon Falls area — one shared map, so everyone sees the same cats.</p>
+  <p>Maine — one app, locked to your own town. You only see cats for your ZIP / county / town.</p>
+  <p id="scopeLabel" class="small"></p>
   <p class="counts" id="counts">Loading…</p>
 </header>
 
 <section id="join" class="card">
-  <h2>Join this neighborhood</h2>
-  <p>Enter the neighborhood code a neighbor gave you, and a display name. No phone number or email is shown to anyone.</p>
+  <h2>Join your town</h2>
+  <p>Enter a display name and your 5-digit Maine ZIP code, then pick your county and town. There is no neighborhood code any more — the old <code>lisbon-cats</code> code is no longer used. You are locked to your own town only: there is no View All Maine and no browsing other towns. No phone number or email is shown to anyone.</p>
   <label>Display name <input id="displayName" placeholder="e.g. Jade"></label>
-  <label>Neighborhood code <input id="joinCode" placeholder="Neighborhood code"></label>
+  <label>Maine ZIP code <input id="joinZip" inputmode="numeric" maxlength="5" placeholder="e.g. 04252"></label>
+  <p><button type="button" id="joinGpsBtn">📍 Confirm my location</button></p>
+  <p id="joinGpsStatus" class="small">Not confirmed yet. Tap “Confirm my location” to GPS-confirm, or join with your ZIP only (marked unverified). GPS confirmation improves accuracy, but it is not required — and GPS never blocks you: there is no ZIP-boundary check, so a neighbor at a town edge is not rejected for a GPS mismatch. Your GPS coordinates are never stored as your home location.</p>
+  <label>County
+    <select id="joinCounty">
+      <option value="">Pick a county…</option>
+      <option>Androscoggin</option><option>Aroostook</option><option>Cumberland</option><option>Franklin</option><option>Hancock</option><option>Kennebec</option><option>Knox</option><option>Lincoln</option><option>Oxford</option><option>Penobscot</option><option>Piscataquis</option><option>Sagadahoc</option><option>Somerset</option><option>Waldo</option><option>Washington</option><option>York</option>
+    </select>
+  </label>
+  <label>Town <input id="joinTown" list="joinTownList" placeholder="e.g. Lisbon Falls — type a new town if yours is not listed yet"></label>
+  <datalist id="joinTownList"></datalist>
+  <p class="small">Town suggestions come from towns already added in that county. If your town is not listed yet, just type it in — it will be added when the first cat from that town is added.</p>
   <button id="joinBtn">Join the map</button>
   <p id="joinError" class="error" role="alert"></p>
-  <p class="small">Default code for a local test run: <strong>lisbon-cats</strong> — change it with the NEIGHBORHOOD_CODE setting when you deploy (see README).</p>
 </section>
 
 <main id="app" hidden>
+  <div id="loudAlert" class="loud-alert" hidden>
+    <p id="loudAlertText"></p>
+    <p id="loudAlertNote" class="small"></p>
+    <p><button type="button" onclick="checkNowAlert()">Check now — jump to this cat &amp; GPS pin</button> <button type="button" onclick="dismissLoudAlert()">Dismiss alert</button></p>
+  </div>
+  <div id="emergencyBanner" class="alert" hidden></div>
   <div id="alertBanner" class="alert" hidden></div>
+  <p><button type="button" id="changeScopeBtn">Change town (re-enter ZIP + GPS)</button></p>
+  <p class="card" style="margin:16px">
+    <label><input type="checkbox" id="loudToggle" checked> 🔊 Loud alerts for my cats</label>
+    <button type="button" onclick="testAlertSound()">🔊 Test alert sound</button>
+    <button type="button" onclick="enableNotifications()">🔔 Enable browser notifications</button>
+    <span id="alertSettingsNote" class="small">When an Indoor Only cat is spotted in your town, you get a flashing banner that stays until dismissed, plus (if loud alerts are on) an alert sound, phone vibration on Android, and a browser notification if you allowed notifications. Honest limit: a web app cannot override silent / Do Not Disturb, and cannot reliably wake a fully closed browser without a native app and push service.</span>
+  </p>
 
   <div class="tabs" role="tablist">
     <button data-filter="all" class="active">All cats</button>
@@ -51,6 +75,14 @@
     <p class="warning">⚠️ Home area: street or nearest corner ONLY. Do <strong>not</strong> enter your house number.</p>
     <label>Cat name * <input name="name" required placeholder="e.g. Whiskers"></label>
     <label>Your display name * <input name="owner" required></label>
+    <label>County *
+      <select name="county" id="addCounty" required>
+        <option value="">Pick a county…</option>
+        <option>Androscoggin</option><option>Aroostook</option><option>Cumberland</option><option>Franklin</option><option>Hancock</option><option>Kennebec</option><option>Knox</option><option>Lincoln</option><option>Oxford</option><option>Penobscot</option><option>Piscataquis</option><option>Sagadahoc</option><option>Somerset</option><option>Waldo</option><option>Washington</option><option>York</option>
+      </select>
+    </label>
+    <label>Town * <input name="town" id="addTown" list="addTownList" required placeholder="e.g. Lisbon Falls — type a new town if yours is not listed yet"></label>
+    <datalist id="addTownList"></datalist>
     <label>Description <input name="description" placeholder="Friendly, shy, chatty…"></label>
     <label>Collar / ID <input name="collar" placeholder="e.g. Red collar, bell"></label>
     <label>Home area <input name="homeArea" placeholder="e.g. Near Main St & School St"></label>
@@ -62,8 +94,23 @@
     <fieldset>
       <legend>Pick a photo</legend>
       <div id="photoChoices"></div>
-      <p class="small">No file upload here on purpose — uploads failed on some Android phones in the earlier version. You can also add an optional photo link below.</p>
+      <p class="small">Or upload a real photo — it will be resized in your browser to at most 800px on the long side before it is sent, so it stays small. If you don't upload one, the emoji above is used instead.</p>
+      <label>Upload a photo <input id="photoUpload" type="file" accept="image/*"></label>
+      <div id="photoPreview" hidden><img id="photoPreviewImg" alt="Uploaded photo preview" style="width:120px;height:120px;object-fit:cover;border-radius:8px"><br><button type="button" id="photoRemove">Remove uploaded photo</button></div>
+      <p id="photoUploadError" class="error"></p>
       <label>Optional photo URL <input name="photoUrl" placeholder="https://… (optional)"></label>
+    </fieldset>
+    <fieldset>
+      <legend>Emergency Details (optional — all fields optional)</legend>
+      <p class="small">These details are <strong>hidden in normal mode</strong>. They only become visible to everyone in your town if this cat is marked Lost / Emergency — or, for the exact address only, if you tick “Always show my exact address” below. Fill in only what you are comfortable sharing in an emergency.</p>
+      <label>Exact address (optional) <input name="emergencyAddress" placeholder="e.g. 123 Main St — only shown in Emergency Mode, unless you tick the box below"></label>
+      <label><input type="checkbox" name="showAddressAlways"> Always show my exact address (default OFF — address only; contact, vet, and medical notes still stay hidden until Emergency Mode)</label>
+      <label>Best contact / phone (optional) <input name="emergencyContact" placeholder="e.g. Best phone or way to reach me fast"></label>
+      <label>Vet (optional) <input name="emergencyVet" placeholder="e.g. Vet name / clinic"></label>
+      <label>Medical notes (optional) <input name="emergencyMedical" placeholder="e.g. Needs daily medication, shy with strangers"></label>
+      <label>Other finder notes (optional) <input name="emergencyNotes" placeholder="e.g. Please call, do not chase"></label>
+      <label>Owner PIN (optional but recommended, 4–6 digits) <input name="ownerPin" inputmode="numeric" maxlength="6" placeholder="e.g. 4821 — stored as a hash, never shown"></label>
+      <p class="small">If you set a PIN, it is required to turn Emergency Mode on <em>and</em> off. If you do not set one, anyone in town could toggle it — set a PIN first if you can.</p>
     </fieldset>
     <p>📍 Pin: <span id="pinStatus">No spot picked yet — your pin will land near the center of the map. To place it, tap anywhere on the map above.</span></p>
     <button type="submit">Add my cat to the shared map</button>
