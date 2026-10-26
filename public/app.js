@@ -229,14 +229,56 @@ function scopeQuery() {
   return `county=${encodeURIComponent(selectedCounty)}&town=${encodeURIComponent(selectedTown)}&zip=${encodeURIComponent(zip)}`;
 }
 
+const NO_PIN_TEXT = 'No pin placed yet — tap the map or use my current location, otherwise it will default to the town centre.';
+const HOME_GPS_NOTE = 'This is your approximate home area — tap the map to move it if it is off, e.g. to the end of your road or nearest corner. Do NOT place it exactly on your house if you want to stay private.';
+// Home-pin GPS: GPS only ever sets pendingPin in this browser; nothing
+// is sent to the server until the user submits the Add Your Cat form.
+// The button below re-places/re-centres it on demand. Sighting GPS
+// pins stay exact and separate — exact pins are ONLY for sightings.
+function placeHomePinFromGps() {
+  const status = $('pinStatus');
+  if (!navigator.geolocation) { if (status) status.textContent = 'GPS is not available on this device — please tap the map to place your pin instead.'; return; }
+  if (status) status.textContent = 'Getting your location…';
+  navigator.geolocation.getCurrentPosition((pos) => {
+    pendingPin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    if (map) map.setView([pendingPin.lat, pendingPin.lng], 16);
+    if (status) status.textContent = `GPS pin placed near ${pendingPin.lat.toFixed(5)}, ${pendingPin.lng.toFixed(5)}. ${HOME_GPS_NOTE}`;
+  }, () => {
+    if (status) status.textContent = 'GPS was denied or unavailable — please tap the map to place your pin instead. Your pin will still default to the town centre if you submit without placing one.';
+  }, { enableHighAccuracy: true, timeout: 10000 });
+}
+
 function initMap() {
   if (typeof L === 'undefined') { $('mapFallback').hidden = false; return; }
   if (map) { map.remove(); map = null; }
+  // Fallback centre first, so the map always renders even if GPS is
+  // denied or unavailable. If the user grants location, the map is
+  // then centred on their GPS location (in Maine) AND the home pin
+  // defaults to that GPS location automatically — NOT to the town
+  // centre, and NOT manual-tap-only. A phone GPS fix indoors can
+  // still drift tens of metres, e.g. to the end of a road, which is
+  // why the pin stays tap-to-move afterwards. If GPS is denied or
+  // unavailable, no pin is auto-set: the user must tap the map (or
+  // use the button later), and the no-pin warning stays visible.
   map = L.map('map').setView([44.003, -70.06], 14);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(map);
+  if (navigator.geolocation && !pendingPin) {
+    navigator.geolocation.getCurrentPosition((pos) => {
+      if (map && inMaine(pos.coords.latitude, pos.coords.longitude)) {
+        map.setView([pos.coords.latitude, pos.coords.longitude], 14);
+        pendingPin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        const status = $('pinStatus');
+        if (status) status.textContent = `GPS pin placed near ${pendingPin.lat.toFixed(5)}, ${pendingPin.lng.toFixed(5)}. ${HOME_GPS_NOTE}`;
+      }
+    }, () => {
+      // Denied / unavailable: keep the fallback centre for viewing,
+      // but do NOT auto-set a town-centre home pin. The no-pin
+      // warning in the Add Your Cat form stays as the prompt.
+    }, { enableHighAccuracy: true, timeout: 10000 });
+  }
   map.on('click', (e) => {
     pendingPin = { lat: e.latlng.lat, lng: e.latlng.lng };
-    $('pinStatus').textContent = `Pin placed near ${pendingPin.lat.toFixed(4)}, ${pendingPin.lng.toFixed(4)} — approximate, not a house address.`;
+    $('pinStatus').textContent = `Pin placed near ${pendingPin.lat.toFixed(4)}, ${pendingPin.lng.toFixed(4)} — approximate, not a house address. Tap again to move it.`;
   });
 }
 
@@ -334,6 +376,11 @@ function goToAddCat() {
   // set of IDs — it is not duplicated on My Profile). From My Profile,
   // "Add another cat" jumps there and pre-fills owner + town.
   switchMainTab('map');
+  // If no home pin exists yet (e.g. GPS was not available when the
+  // map first loaded, or a previous cat was just submitted), try GPS
+  // again as the automatic starting pin — the button and tap-to-move
+  // remain available afterwards.
+  if (!pendingPin) placeHomePinFromGps();
   const ownerInput = document.querySelector('#addCat [name="owner"]');
   if (ownerInput && displayName) ownerInput.value = displayName;
   syncAddFormLocation();
@@ -604,6 +651,7 @@ $('photoUpload').onchange = async (e) => {
   }
 };
 $('photoRemove').onclick = clearUploadedPhoto;
+if ($('homeGpsBtn')) $('homeGpsBtn').onclick = placeHomePinFromGps;
 $('addCat').onsubmit = async (e) => {
   e.preventDefault();
   if (!signedIn) { $('addError').textContent = 'Please sign in with Google to add a cat. Guests can browse only — sign in on the My Profile tab.'; switchMainTab('profile'); return; }
@@ -623,7 +671,12 @@ $('addCat').onsubmit = async (e) => {
       ownerPin: pin,
     }) });
     $('addError').textContent = ''; e.target.reset(); clearUploadedPhoto(); pendingPin = null;
-    $('pinStatus').textContent = 'No spot picked yet.';
+    $('pinStatus').textContent = NO_PIN_TEXT;
+    // Next cat starts from GPS again, if permission is allowed;
+    // if denied, the no-pin / denied warning above is replaced by
+    // the GPS-denied message in placeHomePinFromGps, not a silent
+    // town-centre pin.
+    placeHomePinFromGps();
     await refresh(); syncAddFormLocation();
   } catch (err) { $('addError').textContent = err.message; }
 };

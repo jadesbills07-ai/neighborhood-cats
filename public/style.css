@@ -1,4 +1,13 @@
-*{box-sizing:border-box}body{font-family:system-ui,sans-serif;margin:0;background:#fff8ec;color:#17241d}
+*{box-sizing:border-box}body{font-family:'Chewy','Fredoka','Baloo 2','Comic Sans MS','Trebuchet MS',cursive,sans-serif;font-size:17px;line-height:1.45;margin:0;background:#fff8ec;color:#17241d}
+/* Chewy everywhere (Jade's choice): the whole UI uses Chewy, the free bubbly
+   cat-friendly font, with Fredoka/Baloo 2 fallbacks if Google Fonts is blocked.
+   Long paragraphs use a slightly larger size and comfortable line-height so
+   Chewy stays readable. Code snippets stay monospace, as they are not UI text. */
+input,select,textarea,button{font-family:inherit}
+code{font-family:ui-monospace,monospace}
+.paw-logo{width:44px;height:52px;vertical-align:middle;flex:none}
+footer .paw-logo{width:28px;height:33px}
+header h1 .paw-logo{width:44px;height:52px}
 /* Detective-cat background, LIGHTLY done (Jade's clarification): the
    header illustration may be clear, but the page watermark must be
    very faint, light colours only, so it never muddles text. Cards,
@@ -19,8 +28,9 @@ header h1{margin:0;font-size:34px;letter-spacing:.3px;position:relative;z-index:
    without doubling it. This is deliberately small and only on that one
    letter — a full novelty "cat font" would hurt readability at phone
    sizes, so Chewy + this paw dot + the existing cat ears/whiskers/
-   detective-cat header are the compromise. Body text, forms, buttons
-   and alerts stay system-ui. Fallback stack: Chewy, Fredoka, Baloo 2. */
+   detective-cat header are the compromise. Per Jade's later choice, Chewy
+   is now used everywhere on the website, not just the header, with larger
+   sizes for long text to keep it readable. Fallback stack: Chewy, Fredoka, Baloo 2. */
 .cat-i{display:inline-block;position:relative;line-height:1}
 .cat-i-stem{display:inline-block}
 .cat-i-paw{position:absolute;left:50%;transform:translateX(-50%);top:-.42em;font-size:.48em;line-height:1;color:#ffd9a0}
@@ -44,7 +54,7 @@ header .tagline,header .paw-row,header .whisker-divider,header .small,header .co
 .tabs button::before{left:10px}
 .tabs button::after{right:10px}
 .tabs button.active{background:#e07a2e;border-color:#e07a2e;color:#fff;font-weight:800}
-.tabs button.active::before,.tabs button.active::after{background:#e07a2e} .main-tabs button:focus-visible,.tabs button:focus-visible{outline:3px solid #ffd9a0;outline-offset:2px} .tab-panel{padding:0 0 8px} .tab-panel[hidden]{display:none} .cute-h{border-left:6px solid #e07a2e;padding-left:10px;font-family:'Fredoka','Baloo 2','Comic Sans MS','Trebuchet MS',cursive,sans-serif;font-weight:600} .paw-note{background:#fff3d6;border:1px dashed #e8b46a;border-radius:12px;padding:10px 12px} #search{margin:12px 16px;width:calc(100% - 32px)}#map{height:340px;margin:0 16px;border-radius:12px;border:1px solid #bbb;z-index:0}.cat{background:#fff;border:1px solid #e8d9bd;border-radius:14px;padding:12px;margin:10px 0}.cat .photo{font-size:40px}.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:13px}.outdoor{background:#d9f2e3}.indoor{background:#fde2e2}.spotted{background:#fff3c4}.alert{background:#fff3c4;border:1px solid #e6c200;padding:12px;margin:16px;border-radius:12px}.error{color:#a00}.warning{background:#fff3c4;padding:10px;border-radius:8px}.small{font-size:13px;color:#555}.photo-btn{font-size:28px;padding:8px;border:2px solid #ccc;border-radius:10px;background:#fff;cursor:pointer}.photo-btn.selected{border-color:#0f7a4d}#modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow:auto;z-index:1000}#modal[hidden]{display:none}.modal-box{background:#fff;border-radius:12px;padding:16px;max-width:600px;width:100%;position:relative}.pin{width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid #fff}.pin-outdoor{background:#1a9e4f}.pin-indoor{background:#d33}.pin-spotted{background:#e6b800;animation:pulse 1.2s infinite}@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(230,184,0,.6)}100%{box-shadow:0 0 0 14px rgba(230,184,0,0)}}
+.tabs button.active::before,.tabs button.active::after{background:#e07a2e} .main-tabs button:focus-visible,.tabs button:focus-visible{outline:3px solid #ffd9a0;outline-offset:2px} .tab-panel{padding:0 0 8px} .tab-panel[hidden]{display:none} .cute-h{border-left:6px solid #e07a2e;padding-left:10px;font-family:'Chewy','Fredoka','Baloo 2','Comic Sans MS',cursive,sans-serif;font-weight:400} .paw-note{background:#fff3d6;border:1px dashed #e8b46a;border-radius:12px;padding:10px 12px} #search{margin:12px 16px;width:calc(100% - 32px)}#map{height:340px;margin:0 16px;border-radius:12px;border:1px solid #bbb;z-index:0}.cat{background:#fff;border:1px solid #e8d9bd;border-radius:14px;padding:12px;margin:10px 0}.cat .photo{font-size:40px}.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:13px}.outdoor{background:#d9f2e3}.indoor{background:#fde2e2}.spotted{background:#fff3c4}.alert{background:#fff3c4;border:1px solid #e6c200;padding:12px;margin:16px;border-radius:12px}.error{color:#a00}.warning{background:#fff3c4;padding:10px;border-radius:8px}.small{font-size:15px;color:#555;line-height:1.45}.photo-btn{font-size:28px;padding:8px;border:2px solid #ccc;border-radius:10px;background:#fff;cursor:pointer}.photo-btn.selected{border-color:#0f7a4d}#modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow:auto;z-index:1000}#modal[hidden]{display:none}.modal-box{background:#fff;border-radius:12px;padding:16px;max-width:600px;width:100%;position:relative}.pin{width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid #fff}.pin-outdoor{background:#1a9e4f}.pin-indoor{background:#d33}.pin-spotted{background:#e6b800;animation:pulse 1.2s infinite}@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(230,184,0,.6)}100%{box-shadow:0 0 0 14px rgba(230,184,0,0)}}
 .cat-emergency{border:3px solid #d33;background:#fff5f5}
 .emergency-card{border:2px solid #d33;background:#fff5f5}
 .pin-emergency{background:#d33;animation:pulse 1s infinite}
@@ -52,5 +62,62 @@ header .tagline,header .paw-row,header .whisker-divider,header .small,header .co
 .loud-alert{background:#d33;color:#fff;border:3px solid #800;padding:16px;margin:16px;border-radius:12px;animation:flash 1s infinite}
 .loud-alert button{background:#fff;color:#111}
 @keyframes flash{0%,100%{opacity:1}50%{opacity:.75}}
-footer{padding:16px;text-align:center;color:#555;font-size:13px}
-@media (max-width:480px){header h1{font-size:26px}.main-tabs button{font-size:15px;min-height:56px;padding:10px 6px}.tabs{grid-template-columns:repeat(2,1fr)}.tabs button{font-size:15px;min-height:48px}.header-detective{width:72px;height:72px;right:8px;top:6px}header h1,header .tagline,header .paw-row,header .whisker-divider,header .small,header .counts{padding-right:80px}body::before{width:220px;height:220px;right:-30px;bottom:-10px;opacity:.035}}
+footer{padding:16px;text-align:center;color:#555;font-size:15px}
+@media (max-width:480px){header h1{font-size:26px}header h1 .paw-logo{width:34px;height:40px}.main-tabs button{font-size:15px;min-height:56px;padding:10px 6px}.tabs{grid-template-columns:repeat(2,1fr)}.tabs button{font-size:15px;min-height:48px}.header-detective{width:72px;height:72px;right:8px;top:6px}header h1,header .tagline,header .paw-row,header .whisker-divider,header .small,header .counts{padding-right:80px}body::before{width:220px;height:220px;right:-30px;bottom:-10px;opacity:.035}}
+
+/* MOBILE-FIRST: phone-first layout (Jade: site felt PC-like) */
+/* App-like centred column on larger screens, full width on phones.
+   This block only ADDS/OVERRIDES layout and tap sizes; it does not
+   change the Paw Map Pin logo, Chewy font, GPS home-pin, tabs, or
+   any feature behaviour. */
+html,body{overflow-x:hidden}
+img{max-width:100%;height:auto}
+header,main,footer,section#join{max-width:560px;width:100%;margin-left:auto;margin-right:auto}
+section#join{margin-top:16px;margin-bottom:16px}
+/* All text/number/select controls: full width, at least 16px so Android
+   Chrome does not zoom in on focus, and 48px tall for thumbs.
+   Checkboxes, radios and file pickers are excluded on purpose. */
+input:not([type=checkbox]):not([type=radio]):not([type=file]),select,textarea{width:100%;min-height:48px;font-size:16px;padding:12px;border-radius:10px}
+input[type=file]{width:100%;min-height:48px;font-size:16px;padding:8px 0}
+button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+button{min-height:48px;padding:12px 16px;font-size:17px}
+#closeModal{min-width:44px;min-height:44px;padding:8px 12px}
+.photo-btn{min-width:48px;min-height:48px}
+/* Leaflet zoom controls: thumb-sized on phones. */
+.leaflet-control-zoom a{width:44px!important;height:44px!important;line-height:44px!important;font-size:20px!important}
+@media (max-width:600px){
+  body{font-size:17px}
+  main,.card{padding:14px}
+  .card{margin:12px 0}
+  section#join{margin:12px auto}
+  /* Full-width column: no double inset around the map/search. */
+  #search{margin:12px 0;width:100%}
+  #map{height:440px;margin:0;border-radius:12px}
+  /* Header sized for a phone, not desktop-large. */
+  header{padding:14px 14px 12px}
+  header h1{font-size:28px;line-height:1.15;padding-right:76px}
+  header h1 .paw-logo{width:38px;height:45px}
+  header .tagline{font-size:16px;padding-right:76px}
+  header .paw-row,header .whisker-divider,header .small,header .counts{padding-right:76px}
+  .header-detective{width:68px;height:68px;right:8px;top:6px}
+  /* Stacked, full-width buttons so thumbs do not mis-tap. */
+  main button,section#join button,.card button{width:100%;margin:6px 0}
+  main a:has(>button),section#join a:has(>button){display:block;width:100%}
+  #closeModal{width:auto;margin:0}
+  .photo-btn{width:auto}
+  /* Main tabs stay 3-across, filter tabs 2-across, all thumb-height. */
+  .main-tabs{gap:6px;padding:12px 0 0;margin:12px 0 0}
+  .main-tabs button{min-height:56px;font-size:16px;padding:10px 4px}
+  .tabs{gap:6px;padding:12px 0 0}
+  .tabs button{min-height:52px;font-size:16px;padding:8px 4px}
+  .cat{padding:14px;margin:12px 0}
+  .cat button,.modal-box button{width:100%}
+  #modal{padding:12px;align-items:flex-start}
+  .modal-box{padding:16px;max-width:560px;width:100%}
+  .alert,.loud-alert{margin:12px 0}
+  footer{padding:14px;font-size:16px}
+}
+@media (min-width:561px){
+  /* Desktop stays usable as a centred app column, not stretched wide. */
+  #map{height:380px}
+}

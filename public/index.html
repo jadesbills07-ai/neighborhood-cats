@@ -10,11 +10,13 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="style.css">
 <meta name="theme-color" content="#145c3f">
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
+<link rel="apple-touch-icon" href="/logo.svg">
 </head>
 <body>
 <header>
   <div class="header-detective" aria-hidden="true"><svg viewBox="0 0 200 200" width="110" height="110" role="presentation"><g stroke="#0f2a22" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M45 78 L38 28 L82 52 Z" fill="#fffdf6"/><path d="M155 78 L162 28 L118 52 Z" fill="#fffdf6"/><path d="M55 75 L50 42 L72 58 Z" fill="#ffb59e"/><path d="M145 75 L150 42 L128 58 Z" fill="#ffb59e"/><ellipse cx="100" cy="110" rx="62" ry="54" fill="#fffdf6"/><path d="M60 108 L28 100 M60 118 L30 122 M140 108 L172 100 M140 118 L170 122" stroke="#ffd9a0" stroke-width="3"/><circle cx="76" cy="102" r="7" fill="#145c3f" stroke="none"/><path d="M92 122 L108 122 L100 130 Z" fill="#e07a2e" stroke="none"/><path d="M100 130 Q100 138 92 142 M100 130 Q100 138 108 142" fill="none"/></g><g><circle cx="128" cy="102" r="26" fill="#ffd9a0" fill-opacity="0.35" stroke="#e07a2e" stroke-width="7"/><circle cx="128" cy="102" r="7" fill="#145c3f"/><path d="M147 121 L172 146" stroke="#145c3f" stroke-width="8" stroke-linecap="round"/><path d="M160 158 Q175 150 178 138" fill="none" stroke="#fffdf6" stroke-width="5" stroke-linecap="round"/></g></svg></div>
-  <h1 aria-label="Where in the Whiskers?">🐾 Where in the Wh<span class="cat-i"><span class="cat-i-stem">ı</span><span class="cat-i-paw" aria-hidden="true">🐾</span></span>skers<span class="whiskers">?</span></h1>
+  <h1 aria-label="Where in the Whiskers?"><svg class="paw-logo" viewBox="0 0 100 118" role="img" aria-label="Paw Map Pin logo"><g stroke="#0f2a22" stroke-width="3" stroke-linejoin="round"><path d="M30 30 L24 8 L48 20 Z" fill="#fffdf6"/><path d="M70 30 L76 8 L52 20 Z" fill="#fffdf6"/><path d="M34 26 L31 15 L42 21 Z" fill="#e07a2e" stroke="none"/><path d="M66 26 L69 15 L58 21 Z" fill="#e07a2e" stroke="none"/></g><path d="M50 18 C30 18 16 33 16 50 C16 70 32 92 50 112 C68 92 84 70 84 50 C84 33 70 18 50 18 Z" fill="#145c3f" stroke="#0f2a22" stroke-width="3"/><circle cx="50" cy="50" r="24" fill="#fffdf6"/><g fill="#e07a2e"><ellipse cx="50" cy="58" rx="9" ry="7"/><circle cx="36" cy="46" r="4.5"/><circle cx="46" cy="40" r="4.5"/><circle cx="54" cy="40" r="4.5"/><circle cx="64" cy="46" r="4.5"/></g></svg> Where in the Wh<span class="cat-i"><span class="cat-i-stem">ı</span><span class="cat-i-paw" aria-hidden="true">🐾</span></span>skers<span class="whiskers">?</span></h1>
   <p class="tagline">Maine — one app, locked to your own town. You only see cats for your ZIP / county / town.</p>
   <p class="paw-row" aria-hidden="true">🐾 🐾 🐾</p>
   <div class="whisker-divider" aria-hidden="true"></div>
@@ -160,7 +162,9 @@
       <label>Owner PIN (optional but recommended, 4–6 digits) <input name="ownerPin" inputmode="numeric" maxlength="6" placeholder="e.g. 4821 — stored as a hash, never shown"></label>
       <p class="small">If you set a PIN, it is required to turn Emergency Mode on <em>and</em> off. If you do not set one, anyone in town could toggle it — set a PIN first if you can.</p>
     </fieldset>
-    <p>📍 Pin: <span id="pinStatus">No spot picked yet — your pin will land near the center of the map. To place it, tap anywhere on the map above.</span></p>
+    <p>📍 Pin: <span id="pinStatus">No pin placed yet — tap the map or use my current location, otherwise it will default to the town centre.</span></p>
+    <p><button type="button" id="homeGpsBtn">📍 Place pin at my current location</button></p>
+    <p class="small">Home pins are approximate by design. If GPS puts you at the end of your road, tap the map to move the pin to your nearest corner instead — do not place it exactly on your house if you want to stay private.</p>
     <button type="submit">Add my cat to the shared map</button>
     <p id="addError" class="error" role="alert"></p>
   </form>
@@ -200,7 +204,7 @@
   </section>
 </main>
 
-<footer>🐾 Where in the Whiskers? — Maine · One app, locked to your own town · Pins are approximate by design, except exact sighting pins. · <a href="/privacy">Privacy Policy</a></footer>
+<footer><svg class="paw-logo" viewBox="0 0 100 118" role="img" aria-label="Paw Map Pin logo"><g stroke="#0f2a22" stroke-width="3" stroke-linejoin="round"><path d="M30 30 L24 8 L48 20 Z" fill="#fffdf6"/><path d="M70 30 L76 8 L52 20 Z" fill="#fffdf6"/><path d="M34 26 L31 15 L42 21 Z" fill="#e07a2e" stroke="none"/><path d="M66 26 L69 15 L58 21 Z" fill="#e07a2e" stroke="none"/></g><path d="M50 18 C30 18 16 33 16 50 C16 70 32 92 50 112 C68 92 84 70 84 50 C84 33 70 18 50 18 Z" fill="#145c3f" stroke="#0f2a22" stroke-width="3"/><circle cx="50" cy="50" r="24" fill="#fffdf6"/><g fill="#e07a2e"><ellipse cx="50" cy="58" rx="9" ry="7"/><circle cx="36" cy="46" r="4.5"/><circle cx="46" cy="40" r="4.5"/><circle cx="54" cy="40" r="4.5"/><circle cx="64" cy="46" r="4.5"/></g></svg> Where in the Whiskers? — Maine · One app, locked to your own town · Pins are approximate by design, except exact sighting pins. · <a href="/privacy">Privacy Policy</a></footer>
 
 <div id="modal" hidden>
   <div class="modal-box">
