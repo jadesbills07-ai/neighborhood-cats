@@ -24,13 +24,16 @@
 </header>
 
 <section id="join" class="card">
-  <h2>Join your town</h2>
+  <h2>Your account</h2>
   <div id="authBox" class="card" style="margin:0 0 16px">
-    <h3 style="margin-top:0">🔑 Sign in with Google</h3>
+    <h3 style="margin-top:0">🔑 Create account / Log in</h3>
     <p id="authStatus" class="small">Checking sign-in…</p>
-    <p><a href="/auth/google" id="googleSignInBtn"><button type="button">Sign in with Google</button></a>
+    <p><a href="/auth/google" id="googleSignInBtn"><button type="button">Create account</button></a>
     <button type="button" id="googleSignOutBtn" hidden>Sign out</button></p>
-    <p class="small">Signing in creates your account, so your profile and your cats follow you to any phone or browser — sign out here, sign in somewhere else, and they are right there. No password is stored: Google handles sign-in. You are locked to your own town only, even when signed in. See our <a href="/privacy">Privacy Policy</a>.</p>
+    <p class="small">New here? Create your account with Google. No password to remember.</p>
+    <p><a href="/auth/google" id="googleLogInBtn"><button type="button">Log in</button></a></p>
+    <p class="small">Already have an account? Log in with Google.</p>
+    <p class="small">After signing in, enter only your Maine ZIP code — your town is filled in automatically. You only see cats for your own town. See our <a href="/privacy">Privacy Policy</a>.</p>
     <div id="accountSetup" hidden>
       <h4>Finish setting up your account — ZIP only</h4>
       <p class="small">Enter ONLY your 5-digit Maine ZIP code, then tap GPS confirmation. Your county and town are filled in automatically — you do not need to pick them.</p>
@@ -48,23 +51,6 @@
       <p id="setupError" class="error" role="alert"></p>
     </div>
   </div>
-  <h3>Or browse as a guest (view only)</h3>
-  <p>Guests can view cats for a town, but adding cats, messaging, sighting reports, and Emergency Mode require a signed-in Google account. Enter a display name and your 5-digit Maine ZIP code, then pick your county and town. There is no neighborhood code any more — the old <code>lisbon-cats</code> code is no longer used. You are locked to your own town only: there is no View All Maine and no browsing other towns. No phone number or email is shown to anyone.</p>
-  <label>Display name <input id="displayName" placeholder="e.g. Jade"></label>
-  <label>Maine ZIP code <input id="joinZip" inputmode="numeric" maxlength="5" placeholder="e.g. 04252"></label>
-  <p><button type="button" id="joinGpsBtn">📍 Confirm my location</button></p>
-  <p id="joinGpsStatus" class="small">Not confirmed yet. Tap “Confirm my location” to GPS-confirm, or join with your ZIP only (marked unverified). GPS confirmation improves accuracy, but it is not required — and GPS never blocks you: there is no ZIP-boundary check, so a neighbor at a town edge is not rejected for a GPS mismatch. Your GPS coordinates are never stored as your home location.</p>
-  <label>County
-    <select id="joinCounty">
-      <option value="">Pick a county…</option>
-      <option>Androscoggin</option><option>Aroostook</option><option>Cumberland</option><option>Franklin</option><option>Hancock</option><option>Kennebec</option><option>Knox</option><option>Lincoln</option><option>Oxford</option><option>Penobscot</option><option>Piscataquis</option><option>Sagadahoc</option><option>Somerset</option><option>Waldo</option><option>Washington</option><option>York</option>
-    </select>
-  </label>
-  <label>Town <input id="joinTown" list="joinTownList" placeholder="e.g. Lisbon Falls — type a new town if yours is not listed yet"></label>
-  <datalist id="joinTownList"></datalist>
-  <p class="small">Town suggestions come from towns already added in that county. If your town is not listed yet, just type it in — it will be added when the first cat from that town is added.</p>
-  <button id="joinBtn">Join the map</button>
-  <p id="joinError" class="error" role="alert"></p>
 </section>
 
 <main id="app" hidden>
@@ -207,9 +193,9 @@
       <p id="profileAuthStatus" class="small">Checking sign-in…</p>
       <p><a href="/auth/google" id="profileGoogleSignInBtn"><button type="button">Sign in with Google</button></a>
       <button type="button" id="profileGoogleSignOutBtn" hidden>Sign out</button></p>
-      <p class="small">Signed-in account: your profile and your cats follow you to any phone or browser. Sign out here and sign in somewhere else to pick up where you left off. Guests can browse, but cannot add cats, message, report sightings, or use Emergency Mode. See our <a href="/privacy">Privacy Policy</a>.</p>
+      <p class="small">Signed-in account: your profile and your cats follow you to any phone or browser. Sign out here and sign in somewhere else to pick up where you left off. See our <a href="/privacy">Privacy Policy</a>.</p>
     </div>
-    <p class="paw-note">🐾 With a Google account, this profile lives on the server, not just this browser. Guest profile details below are still device-only — sign in to make your profile travel with you.</p>
+    <p class="paw-note">🐾 With a Google account, this profile lives on the server, not just this browser.</p>
     <form id="profileForm" class="card">
       <p><strong>Your joined town</strong></p>
       <p id="profileScope" class="small"></p>

@@ -23,8 +23,8 @@ function inMaine(lat, lng) { return lat >= 43.0 && lat <= 47.5 && lng >= -71.2 &
 let map = null, markers = [], pendingPin = null, chosenPhoto = '🐈';
 const MAX_PHOTOS_PER_CAT = 5;
 let uploadedPhotos = [];
-// Google account state. Guests can browse a town read-only; adding
-// cats, messaging, sightings, and Emergency Mode require sign-in.
+// Google account state. Adding cats, messaging, sightings, and
+// Emergency Mode require sign-in.
 let signedIn = false, googleConfigured = false, accountUser = null, myCats = [];
 let setupGpsConfirmed = false, setupLookup = null;
 async function refreshAuth() {
@@ -40,20 +40,20 @@ function updateAuthUI() {
   const status = signedIn
     ? (accountUser && accountUser.hasProfile ? `✓ Signed in with Google as ${accountUser.displayName} — ${accountUser.county} / ${accountUser.town} (${accountUser.zip}) · GPS: ${accountUser.gpsConfirmed ? 'confirmed ✓' : 'unverified (ZIP only)'}`
       : `✓ Signed in with Google as ${accountUser ? accountUser.displayName : ''} — please finish ZIP setup below so your town is set.`)
-    : (googleConfigured ? 'Not signed in. Sign in with Google to add cats, message, report sightings, and use Emergency Mode. Guests can browse a town read-only.'
-      : '⚠️ Google sign-in is not set up yet on this server (no Google credentials configured). You can still browse as a guest. See GOOGLE_SETUP.md for the owner setup steps.');
+    : (googleConfigured ? 'Not signed in. Create an account or log in with Google to use the app.'
+      : '⚠️ Google sign-in is not set up yet on this server (no Google credentials configured). See GOOGLE_SETUP.md for the owner setup steps.');
   const a = $('authStatus'); if (a) a.textContent = status;
   const p = $('profileAuthStatus'); if (p) p.textContent = status;
-  const signInBtns = [$('googleSignInBtn'), $('profileGoogleSignInBtn')];
+  const signInBtns = [$('googleSignInBtn'), $('googleLogInBtn'), $('profileGoogleSignInBtn')];
   signInBtns.forEach((b) => { if (b) b.closest('p, a') && (b.parentElement.hidden = signedIn); });
   // Sign-in buttons are <a><button> wrappers; hide the anchor when signed in.
-  document.querySelectorAll('#googleSignInBtn, #profileGoogleSignInBtn').forEach((b) => { if (b.parentElement && b.parentElement.tagName === 'A') b.parentElement.hidden = signedIn; });
+  document.querySelectorAll('#googleSignInBtn, #googleLogInBtn, #profileGoogleSignInBtn').forEach((b) => { if (b.parentElement && b.parentElement.tagName === 'A') b.parentElement.hidden = signedIn; });
   const outBtns = [$('googleSignOutBtn'), $('profileGoogleSignOutBtn')];
   outBtns.forEach((b) => { if (b) b.hidden = !signedIn; });
   const setup = $('accountSetup');
   if (setup) setup.hidden = !(signedIn && accountUser && !accountUser.hasProfile);
   if (!googleConfigured) {
-    document.querySelectorAll('#googleSignInBtn, #profileGoogleSignInBtn').forEach((b) => { b.disabled = true; });
+    document.querySelectorAll('#googleSignInBtn, #googleLogInBtn, #profileGoogleSignInBtn').forEach((b) => { b.disabled = true; });
   }
 }
 function signOut() { window.location.href = '/auth/logout'; }
@@ -682,7 +682,7 @@ window.openCat = function (id) {
 };
 
 window.toggleEmergency = async function (id, turnOn) {
-  if (!signedIn) { alert('Please sign in with Google to use Emergency Mode. Guests can browse only.'); switchMainTab('profile'); return; }
+  if (!signedIn) { alert('Please sign in with Google to use Emergency Mode. Please sign in first.'); switchMainTab('profile'); return; }
   const cat = cats.find((c) => c.id === id); if (!cat) return;
   let pin = '';
   if (turnOn) {
@@ -754,12 +754,12 @@ window.useSpotGps = function () {
 };
 
 window.sendMessage = async function (id) {
-  if (!signedIn) { $('modalError').textContent = 'Please sign in with Google to message an owner. Guests can browse only.'; return; }
+  if (!signedIn) { $('modalError').textContent = 'Please sign in with Google to message an owner. Please sign in first.'; return; }
   try { await api(`/api/cats/${id}/messages`, { method: 'POST', body: JSON.stringify({ text: $('msgText').value }) }); await refresh(); openCat(id); }
   catch (e) { $('modalError').textContent = e.message; }
 };
 window.sendSighting = async function (id) {
-  if (!signedIn) { $('modalError').textContent = 'Please sign in with Google to report a sighting. Guests can browse only.'; return; }
+  if (!signedIn) { $('modalError').textContent = 'Please sign in with Google to report a sighting. Please sign in first.'; return; }
   try {
     const s = await api(`/api/cats/${id}/sightings`, { method: 'POST', body: JSON.stringify({ location: $('spotLocation').value, note: $('spotNote').value, lat: spotGps?.lat, lng: spotGps?.lng, photoData: spotPhoto || null }) });
     // Don't loud-alert the spotter for their own report on the next refresh.
@@ -857,7 +857,7 @@ $('photoRemove').onclick = clearUploadedPhoto;
 if ($('homeGpsBtn')) $('homeGpsBtn').onclick = placeHomePinFromGps;
 $('addCat').onsubmit = async (e) => {
   e.preventDefault();
-  if (!signedIn) { $('addError').textContent = 'Please sign in with Google to add a cat. Guests can browse only — sign in on the My Profile tab.'; switchMainTab('profile'); return; }
+  if (!signedIn) { $('addError').textContent = 'Please sign in with Google to add a cat. Please sign in first — sign in on the My Profile tab.'; switchMainTab('profile'); return; }
   const f = new FormData(e.target);
   const pin = String(f.get('ownerPin') || '').trim();
   if (pin && !/^\d{4,6}$/.test(pin)) { $('addError').textContent = 'Owner PIN must be 4–6 digits, or left blank.'; return; }
@@ -903,62 +903,20 @@ function syncAddFormLocation() {
   if (c && selectedCounty) c.value = selectedCounty;
   if (t && selectedTown) t.value = selectedTown;
 }
-$('joinCounty').onchange = () => { fetchTownSuggestions($('joinCounty').value, $('joinTownList')); };
 $('addCounty').onchange = () => { fetchTownSuggestions($('addCounty').value, $('addTownList')); };
-$('joinGpsBtn').onclick = () => {
-  const status = $('joinGpsStatus');
-  if (!navigator.geolocation) { status.textContent = 'GPS is not available on this device. You can still join with your ZIP only — it will be marked unverified.'; gpsConfirmed = false; return; }
-  status.textContent = 'Getting your location…';
-  navigator.geolocation.getCurrentPosition((pos) => {
-    // Coordinates are checked in memory only and never stored.
-    // They are also reused, in memory only, for distance display.
-    setViewerLocation(pos.coords.latitude, pos.coords.longitude);
-    if (inMaine(pos.coords.latitude, pos.coords.longitude)) {
-      gpsConfirmed = true;
-      status.textContent = '✓ GPS confirmed — your device is in Maine. GPS is a confirmation flag only; it does not prove your exact ZIP boundary, and your coordinates are not stored.';
-    } else {
-      gpsConfirmed = false;
-      status.textContent = 'GPS shows a location outside Maine. You can still join with your Maine ZIP — GPS does not block you, and this join will be marked unverified. Please double-check your ZIP.';
-    }
-  }, () => {
-    gpsConfirmed = false;
-    status.textContent = 'GPS was denied or unavailable. You can still join with your ZIP only, marked unverified. GPS confirmation improves accuracy, but it is not required.';
-  }, { enableHighAccuracy: true, timeout: 10000 });
-};
 // Change town is NOT a free town switcher: it wipes the stored scope and
-// forces a fresh join with a new ZIP and a new GPS confirmation.
-$('changeScopeBtn').onclick = () => {
+// forces a fresh ZIP + GPS confirmation for a signed-in account.
+if ($('changeScopeBtn')) $('changeScopeBtn').onclick = () => {
   sessionStorage.removeItem('nc-zip'); sessionStorage.removeItem('nc-county');
   sessionStorage.removeItem('nc-town'); sessionStorage.removeItem('nc-gps');
   zip = ''; selectedCounty = ''; selectedTown = ''; gpsConfirmed = false;
   if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
   $('app').hidden = true; $('join').hidden = false;
-  $('displayName').value = displayName;
-  $('joinZip').value = ''; $('joinCounty').value = ''; $('joinTown').value = '';
-  $('joinGpsStatus').textContent = 'Not confirmed yet. Tap “Confirm my location” to GPS-confirm, or join with your ZIP only (marked unverified).';
-  $('joinError').textContent = '';
+  const setup = $('accountSetup'); if (setup && signedIn) setup.hidden = false;
 };
 $('loudToggle').onchange = (e) => {
   sessionStorage.setItem('nc-loud', e.target.checked ? '1' : '0');
   $('alertSettingsNote').textContent = e.target.checked ? 'Loud alerts ON: sound, vibration (Android), and browser notifications (if allowed) will fire for new Indoor Only sightings.' : 'Loud alerts OFF: you will still see the flashing banner, but no sound, vibration, or browser notification.';
-};
-$('joinBtn').onclick = async () => {
-  displayName = $('displayName').value.trim(); zip = $('joinZip').value.trim();
-  selectedCounty = $('joinCounty').value; selectedTown = $('joinTown').value.trim();
-  if (!displayName) { $('joinError').textContent = 'Please enter a display name.'; return; }
-  if (!isMaineZip(zip)) { $('joinError').textContent = 'Please enter a valid 5-digit Maine ZIP code (Maine ZIPs run 03901–04992).'; return; }
-  if (!selectedCounty) { $('joinError').textContent = 'Please pick a Maine county first.'; return; }
-  if (!selectedTown) { $('joinError').textContent = 'Please pick a town — type it in if yours is not listed yet.'; return; }
-  sessionStorage.setItem('nc-name', displayName); sessionStorage.setItem('nc-zip', zip);
-  sessionStorage.setItem('nc-county', selectedCounty); sessionStorage.setItem('nc-town', selectedTown);
-  sessionStorage.setItem('nc-gps', gpsConfirmed ? '1' : '0');
-  $('join').hidden = true; $('app').hidden = false; initMap();
-  if ($('loudToggle')) $('loudToggle').checked = loudEnabled();
-  try { await refresh(); syncAddFormLocation(); fetchTownSuggestions(selectedCounty, $('addTownList')); switchMainTab('alerts'); syncProfileForm(); } catch (err) { $('joinError').textContent = err.message; $('app').hidden = true; $('join').hidden = false; return; }
-  // Poll every 30 seconds while the app is open, so a new sighting in
-  // your town triggers the loud alert without a manual refresh.
-  if (refreshTimer) clearInterval(refreshTimer);
-  refreshTimer = setInterval(() => { if (!$('app').hidden) refresh().catch(() => {}); }, 30000);
 };
 // ---- Google account setup: ZIP only, GPS confirmation, auto-fill ----
 // The user enters ONLY a ZIP. /api/zip-lookup fills county/town.
@@ -1005,7 +963,7 @@ if ($('setupSaveBtn')) $('setupSaveBtn').onclick = async () => {
   } catch (e) { $('setupError').textContent = e.message; }
 };
 // Changing town for a signed-in account: go back to the ZIP + GPS
-// setup step (not a free town switcher). Guests use Change town below.
+// setup step (not a free town switcher). 
 if ($('profileChangeScopeBtn')) {
   const origProfileChange = $('profileChangeScopeBtn').onclick;
   $('profileChangeScopeBtn').onclick = () => {
@@ -1021,7 +979,7 @@ if ($('profileChangeScopeBtn')) {
 }
 // Initial auth check. If a signed-in account already has a town, enter
 // straight away (this is how a profile follows you to a new device).
-// Otherwise the guest join / ZIP setup flows above are shown.
+// Otherwise the ZIP setup flow above is shown.
 refreshAuth().then(({ signedIn: si, user }) => {
   if (si && user && user.hasProfile && $('app').hidden) {
     // Only auto-enter if the guest auto-join below did not already
@@ -1034,16 +992,3 @@ refreshAuth().then(({ signedIn: si, user }) => {
     const setup = $('accountSetup'); if (setup) setup.hidden = false;
   }
 }).catch(() => {});
-
-// Auto-join if a full scope was already entered this session (ZIP +
-// county + town). Change town wipes that scope, so it cannot auto-join
-// into a new town without a fresh ZIP + GPS step.
-if (displayName && zip && selectedCounty && selectedTown) {
-  $('displayName').value = displayName; $('joinZip').value = zip;
-  $('joinCounty').value = selectedCounty; $('joinTown').value = selectedTown;
-  $('joinGpsStatus').textContent = gpsConfirmed ? '✓ GPS confirmed in a previous step this session.' : 'Joined with ZIP only (unverified). Tap “Confirm my location” to GPS-confirm.';
-  $('joinBtn').click();
-} else if (selectedCounty) {
-  $('joinCounty').value = selectedCounty;
-  if (selectedTown) $('joinTown').value = selectedTown;
-}
